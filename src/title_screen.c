@@ -22,12 +22,15 @@
 #include "graphics.h"
 #include "constants/rgb.h"
 #include "constants/songs.h"
+#include "constants/rgb.h"
 
 enum {
     TAG_VERSION = 1000,
     TAG_PRESS_START_COPYRIGHT,
+    TAG_PRESS_START_OWNER_NAME,
     TAG_LOGO_SHINE,
 };
+
 
 #define VERSION_BANNER_RIGHT_TILEOFFSET 64
 #define VERSION_BANNER_LEFT_X 98
@@ -41,6 +44,16 @@ enum {
 #define BERRY_UPDATE_BUTTON_COMBO (B_BUTTON | SELECT_BUTTON)
 #define A_B_START_SELECT (A_BUTTON | B_BUTTON | START_BUTTON | SELECT_BUTTON)
 
+#define STAR_COLOR_BACKGROUND 2
+#define STAR_COLOR_DIM       3
+#define STAR_COLOR_MEDIUM    4
+#define STAR_COLOR_BRIGHT    5
+
+// Espacios libres para almacenar copias de colores
+#define COLOR_BACKUP_START   11
+#define MAX_SEQUENCE_LENGTH  6
+
+
 static void MainCB2(void);
 static void Task_TitleScreenPhase1(u8);
 static void Task_TitleScreenPhase2(u8);
@@ -50,11 +63,14 @@ static void CB2_GoToClearSaveDataScreen(void);
 static void CB2_GoToResetRtcScreen(void);
 static void CB2_GoToBerryFixScreen(void);
 static void CB2_GoToCopyrightScreen(void);
-static void UpdateLegendaryMarkingColor(u8);
 
-static void SpriteCB_VersionBannerLeft(struct Sprite *sprite);
-static void SpriteCB_VersionBannerRight(struct Sprite *sprite);
-static void SpriteCB_PressStartCopyrightBanner(struct Sprite *sprite);
+static void UpdateStarColors();
+static void CreateStarAnimationTask(void);
+static void Task_AnimateStars(u8);
+
+
+
+static void SpriteCB_PressStartOwnerNameBanner(struct Sprite *sprite);
 static void SpriteCB_PokemonLogoShine(struct Sprite *sprite);
 
 // const rom data
@@ -65,6 +81,20 @@ static const u32 sTitleScreenRayquazaTilemap[] = INCBIN_U32("graphics/title_scre
 static const u32 sTitleScreenLogoShineGfx[] = INCBIN_U32("graphics/title_screen/logo_shine.4bpp.lz");
 static const u32 sTitleScreenCloudsGfx[] = INCBIN_U32("graphics/title_screen/clouds.4bpp.lz");
 
+
+// background de la portada del juego, esta destinado a estar en el bg0 y usar la paleta E( 14 )
+static const u32 gBackgroundGfx[] = INCBIN_U32("graphics/new_title_screen/bg0_tiles.4bpp.lz");
+static const u32 gBackgroundTilemap[] = INCBIN_U32("graphics/new_title_screen/bg0_tiles.bin.lz");
+static const u16 gBackgroundPal[] = INCBIN_U16("graphics/new_title_screen/bg0_tiles.gbapal");
+
+
+const u32 gTitleScreenPokemonLogoGfx[]     = INCBIN_U32("graphics/new_title_screen/pokemon_logo.8bpp.lz");
+const u32 gTitleScreenPokemonLogoTilemap[] = INCBIN_U32("graphics/new_title_screen/pokemon_logo.bin.lz");
+
+
+// Press Start y Owner Name, sprite no necesita tilemap, ademas ahora es 32x8 los segementos donde los primeros 5 segmentos son para el press start y la animacion tradicional de parpadeo, luego viene el owner name en un solo segmento que seria el segmento 6 
+const u16 gTitleScreenPressStartPal[]      = INCBIN_U16("graphics/new_title_screen/press_start.gbapal");
+const u32 gTitleScreenPressStartGfx[]      = INCBIN_U32("graphics/new_title_screen/press_start.4bpp.lz");
 
 
 // Used to blend "Emerald Version" as it passes over over the Pokémon banner.
@@ -106,83 +136,76 @@ const u16 gTitleScreenAlphaBlend[64] =
     [32 ... 63] = BLDALPHA_BLEND(0, 16)
 };
 
-static const struct OamData sVersionBannerLeftOamData =
-{
-    .y = DISPLAY_HEIGHT,
-    .affineMode = ST_OAM_AFFINE_OFF,
-    .objMode = ST_OAM_OBJ_NORMAL,
-    .mosaic = FALSE,
-    .bpp = ST_OAM_8BPP,
-    .shape = SPRITE_SHAPE(64x32),
-    .x = 0,
-    .matrixNum = 0,
-    .size = SPRITE_SIZE(64x32),
-    .tileNum = 0,
-    .priority = 0,
-    .paletteNum = 0,
-    .affineParam = 0,
+enum StarColorIndices {
+    COLOR_IDX_BACKGROUND = 2,
+    COLOR_IDX_DIM = 3,
+    COLOR_IDX_MEDIUM = 4,
+    COLOR_IDX_BRIGHT = 5
 };
 
-static const struct OamData sVersionBannerRightOamData =
-{
-    .y = DISPLAY_HEIGHT,
-    .affineMode = ST_OAM_AFFINE_OFF,
-    .objMode = ST_OAM_OBJ_NORMAL,
-    .mosaic = FALSE,
-    .bpp = ST_OAM_8BPP,
-    .shape = SPRITE_SHAPE(64x32),
-    .x = 0,
-    .matrixNum = 0,
-    .size = SPRITE_SIZE(64x32),
-    .tileNum = 0,
-    .priority = 0,
-    .paletteNum = 0,
-    .affineParam = 0,
+struct ColorSequence {
+    u8 sequence[MAX_SEQUENCE_LENGTH];
+    u8 length;
+    u8 currentIndex;
 };
 
-static const union AnimCmd sVersionBannerLeftAnimSequence[] =
-{
-    ANIMCMD_FRAME(0, 30),
-    ANIMCMD_END,
+struct StarAnimationState {
+    u16 savedColors[4];           // Guarda los colores originales (2,3,4,5)
+    struct ColorSequence sequences[3]; // Secuencias para colores 3,4,5
+    u8 frameCounter;
+    u8 transitionProgress;
+    bool8 animationActive;
 };
 
-static const union AnimCmd sVersionBannerRightAnimSequence[] =
-{
-    ANIMCMD_FRAME(VERSION_BANNER_RIGHT_TILEOFFSET, 30),
-    ANIMCMD_END,
-};
+static struct StarAnimationState sStarAnim;
 
-static const union AnimCmd *const sVersionBannerLeftAnimTable[] =
+static void InitColorSequences(void)
 {
-    sVersionBannerLeftAnimSequence,
-};
+    // Secuencia para color 3: 4,5,4,3,2
+    sStarAnim.sequences[0].sequence[0] = COLOR_IDX_MEDIUM;  // 4
+    sStarAnim.sequences[0].sequence[1] = COLOR_IDX_BRIGHT;  // 5
+    sStarAnim.sequences[0].sequence[2] = COLOR_IDX_MEDIUM;  // 4
+    sStarAnim.sequences[0].sequence[3] = COLOR_IDX_DIM;     // 3
+    sStarAnim.sequences[0].sequence[4] = COLOR_IDX_BACKGROUND; // 2
+    sStarAnim.sequences[0].length = 5;
+    sStarAnim.sequences[0].currentIndex = 0;
 
-static const union AnimCmd *const sVersionBannerRightAnimTable[] =
-{
-    sVersionBannerRightAnimSequence,
-};
+    // Secuencia para color 4: 5,4,3,2,3,4
+    sStarAnim.sequences[1].sequence[0] = COLOR_IDX_BRIGHT;    // 5
+    sStarAnim.sequences[1].sequence[1] = COLOR_IDX_MEDIUM;    // 4
+    sStarAnim.sequences[1].sequence[2] = COLOR_IDX_DIM;       // 3
+    sStarAnim.sequences[1].sequence[3] = COLOR_IDX_BACKGROUND; // 2
+    sStarAnim.sequences[1].sequence[4] = COLOR_IDX_DIM;       // 3
+    sStarAnim.sequences[1].sequence[5] = COLOR_IDX_MEDIUM;    // 4
+    sStarAnim.sequences[1].length = 6;
+    sStarAnim.sequences[1].currentIndex = 0;
 
-static const struct SpriteTemplate sVersionBannerLeftSpriteTemplate =
-{
-    .tileTag = TAG_VERSION,
-    .paletteTag = TAG_VERSION,
-    .oam = &sVersionBannerLeftOamData,
-    .anims = sVersionBannerLeftAnimTable,
-    .images = NULL,
-    .affineAnims = gDummySpriteAffineAnimTable,
-    .callback = SpriteCB_VersionBannerLeft,
-};
+    // Secuencia para color 5: 4,3,2,3,4
+    sStarAnim.sequences[2].sequence[0] = COLOR_IDX_MEDIUM;    // 4
+    sStarAnim.sequences[2].sequence[1] = COLOR_IDX_DIM;       // 3
+    sStarAnim.sequences[2].sequence[2] = COLOR_IDX_BACKGROUND; // 2
+    sStarAnim.sequences[2].sequence[3] = COLOR_IDX_DIM;       // 3
+    sStarAnim.sequences[2].sequence[4] = COLOR_IDX_MEDIUM;    // 4
+    sStarAnim.sequences[2].length = 5;
+    sStarAnim.sequences[2].currentIndex = 0;
+}
 
-static const struct SpriteTemplate sVersionBannerRightSpriteTemplate =
+void InitStarAnimation(void)
 {
-    .tileTag = TAG_VERSION,
-    .paletteTag = TAG_VERSION,
-    .oam = &sVersionBannerRightOamData,
-    .anims = sVersionBannerRightAnimTable,
-    .images = NULL,
-    .affineAnims = gDummySpriteAffineAnimTable,
-    .callback = SpriteCB_VersionBannerRight,
-};
+    // Guardar los colores originales
+    sStarAnim.savedColors[0] = gPlttBufferUnfaded[BG_PLTT_ID(14) + COLOR_IDX_BACKGROUND];
+    sStarAnim.savedColors[1] = gPlttBufferUnfaded[BG_PLTT_ID(14) + COLOR_IDX_DIM];
+    sStarAnim.savedColors[2] = gPlttBufferUnfaded[BG_PLTT_ID(14) + COLOR_IDX_MEDIUM];
+    sStarAnim.savedColors[3] = gPlttBufferUnfaded[BG_PLTT_ID(14) + COLOR_IDX_BRIGHT];
+    
+    InitColorSequences();
+    
+    sStarAnim.frameCounter = 0;
+    sStarAnim.transitionProgress = 0;
+    sStarAnim.animationActive = TRUE;
+}
+
+
 
 static const struct CompressedSpriteSheet sSpriteSheet_EmeraldVersion[] =
 {
@@ -194,7 +217,7 @@ static const struct CompressedSpriteSheet sSpriteSheet_EmeraldVersion[] =
     {},
 };
 
-static const struct OamData sOamData_CopyrightBanner =
+static const struct OamData sOamData_PressStartOwnerName =
 {
     .y = DISPLAY_HEIGHT,
     .affineMode = ST_OAM_AFFINE_OFF,
@@ -211,93 +234,71 @@ static const struct OamData sOamData_CopyrightBanner =
     .affineParam = 0,
 };
 
+
 static const union AnimCmd sAnim_PressStart_0[] =
 {
-    ANIMCMD_FRAME(1, 4),
+    ANIMCMD_FRAME(0, 4),
     ANIMCMD_END,
 };
 static const union AnimCmd sAnim_PressStart_1[] =
 {
-    ANIMCMD_FRAME(5, 4),
+    ANIMCMD_FRAME(4, 4),
     ANIMCMD_END,
 };
 static const union AnimCmd sAnim_PressStart_2[] =
 {
-    ANIMCMD_FRAME(9, 4),
+    ANIMCMD_FRAME(8, 4),
     ANIMCMD_END,
 };
 static const union AnimCmd sAnim_PressStart_3[] =
 {
-    ANIMCMD_FRAME(13, 4),
+    ANIMCMD_FRAME(12, 4),
     ANIMCMD_END,
 };
 static const union AnimCmd sAnim_PressStart_4[] =
 {
-    ANIMCMD_FRAME(17, 4),
+    ANIMCMD_FRAME(16, 4),
     ANIMCMD_END,
 };
-static const union AnimCmd sAnim_Copyright_0[] =
+static const union AnimCmd sAnim_OwnerName_0[] =
 {
-    ANIMCMD_FRAME(21, 4),
+    ANIMCMD_FRAME(20, 4),
     ANIMCMD_END,
 };
-static const union AnimCmd sAnim_Copyright_1[] =
-{
-    ANIMCMD_FRAME(25, 4),
-    ANIMCMD_END,
-};
-static const union AnimCmd sAnim_Copyright_2[] =
-{
-    ANIMCMD_FRAME(29, 4),
-    ANIMCMD_END,
-};
-static const union AnimCmd sAnim_Copyright_3[] =
-{
-    ANIMCMD_FRAME(33, 4),
-    ANIMCMD_END,
-};
-static const union AnimCmd sAnim_Copyright_4[] =
-{
-    ANIMCMD_FRAME(37, 4),
-    ANIMCMD_END,
-};
+
 
 // The "Press Start" and copyright graphics are each 5 32x8 segments long
 #define NUM_PRESS_START_FRAMES 5
-#define NUM_COPYRIGHT_FRAMES 5
+#define NUM_OWNER_NAME_FRAMES 1
 
-static const union AnimCmd *const sStartCopyrightBannerAnimTable[NUM_PRESS_START_FRAMES + NUM_COPYRIGHT_FRAMES] =
+static const union AnimCmd *const sStartOwnerNameAnimTable[NUM_PRESS_START_FRAMES + NUM_OWNER_NAME_FRAMES] =
 {
     sAnim_PressStart_0,
     sAnim_PressStart_1,
     sAnim_PressStart_2,
     sAnim_PressStart_3,
     sAnim_PressStart_4,
-    [NUM_PRESS_START_FRAMES] =
-    sAnim_Copyright_0,
-    sAnim_Copyright_1,
-    sAnim_Copyright_2,
-    sAnim_Copyright_3,
-    sAnim_Copyright_4,
+    [NUM_PRESS_START_FRAMES] = sAnim_OwnerName_0,
 };
 
-static const struct SpriteTemplate sStartCopyrightBannerSpriteTemplate =
+
+static const struct SpriteTemplate sStartOwnerNameSpriteTemplate =
 {
-    .tileTag = TAG_PRESS_START_COPYRIGHT,
-    .paletteTag = TAG_PRESS_START_COPYRIGHT,
-    .oam = &sOamData_CopyrightBanner,
-    .anims = sStartCopyrightBannerAnimTable,
+    .tileTag = TAG_PRESS_START_OWNER_NAME,
+    .paletteTag = TAG_PRESS_START_OWNER_NAME,
+    .oam = &sOamData_PressStartOwnerName,
+    .anims = sStartOwnerNameAnimTable,
     .images = NULL,
     .affineAnims = gDummySpriteAffineAnimTable,
-    .callback = SpriteCB_PressStartCopyrightBanner,
+    .callback = SpriteCB_PressStartOwnerNameBanner,
 };
 
 static const struct CompressedSpriteSheet sSpriteSheet_PressStart[] =
 {
     {
         .data = gTitleScreenPressStartGfx,
-        .size = 0x520,
-        .tag = TAG_PRESS_START_COPYRIGHT
+        .size = 0x600,  // Ajusta este tamaño basado en tu nuevo gráfico
+        .tag = TAG_PRESS_START_OWNER_NAME
     },
     {},
 };
@@ -306,10 +307,11 @@ static const struct SpritePalette sSpritePalette_PressStart[] =
 {
     {
         .data = gTitleScreenPressStartPal,
-        .tag = TAG_PRESS_START_COPYRIGHT
+        .tag = TAG_PRESS_START_OWNER_NAME
     },
     {},
 };
+
 
 static const struct OamData sPokemonLogoShineOamData =
 {
@@ -367,46 +369,12 @@ static const struct CompressedSpriteSheet sPokemonLogoShineSpriteSheet[] =
 #define tBg2Y       data[3]
 #define tBg1Y       data[4]
 
-// Sprite data for sVersionBannerLeftSpriteTemplate / sVersionBannerRightSpriteTemplate
-#define sAlphaBlendIdx data[0]
-#define sParentTaskId  data[1]
 
-static void SpriteCB_VersionBannerLeft(struct Sprite *sprite)
-{
-    if (gTasks[sprite->sParentTaskId].tSkipToNext)
-    {
-        sprite->oam.objMode = ST_OAM_OBJ_NORMAL;
-        sprite->y = VERSION_BANNER_Y_GOAL;
-    }
-    else
-    {
-        if (sprite->y != VERSION_BANNER_Y_GOAL)
-            sprite->y++;
-        if (sprite->sAlphaBlendIdx != 0)
-            sprite->sAlphaBlendIdx--;
-        SetGpuReg(REG_OFFSET_BLDALPHA, gTitleScreenAlphaBlend[sprite->sAlphaBlendIdx]);
-    }
-}
-
-static void SpriteCB_VersionBannerRight(struct Sprite *sprite)
-{
-    if (gTasks[sprite->sParentTaskId].tSkipToNext)
-    {
-        sprite->oam.objMode = ST_OAM_OBJ_NORMAL;
-        sprite->y = VERSION_BANNER_Y_GOAL;
-    }
-    else
-    {
-        if (sprite->y != VERSION_BANNER_Y_GOAL)
-            sprite->y++;
-    }
-}
-
-// Sprite data for SpriteCB_PressStartCopyrightBanner
+// Sprite data for SpriteCB_PressStartOwnerNameBanner
 #define sAnimate data[0]
 #define sTimer   data[1]
 
-static void SpriteCB_PressStartCopyrightBanner(struct Sprite *sprite)
+static void SpriteCB_PressStartOwnerNameBanner(struct Sprite *sprite)
 {
     if (sprite->sAnimate == TRUE)
     {
@@ -430,27 +398,21 @@ static void CreatePressStartBanner(s16 x, s16 y)
     x -= 64;
     for (i = 0; i < NUM_PRESS_START_FRAMES; i++, x += 32)
     {
-        spriteId = CreateSprite(&sStartCopyrightBannerSpriteTemplate, x, y, 0);
+        spriteId = CreateSprite(&sStartOwnerNameSpriteTemplate, x, y, 0);
         StartSpriteAnim(&gSprites[spriteId], i);
         gSprites[spriteId].sAnimate = TRUE;
     }
 }
 
-static void CreateCopyrightBanner(s16 x, s16 y)
+static void CreateOwnerNameBanner(s16 x, s16 y)
 {
-    u8 i;
-    u8 spriteId;
-
-    x -= 64;
-    for (i = 0; i < NUM_COPYRIGHT_FRAMES; i++, x += 32)
-    {
-        spriteId = CreateSprite(&sStartCopyrightBannerSpriteTemplate, x, y, 0);
-        StartSpriteAnim(&gSprites[spriteId], i + NUM_PRESS_START_FRAMES);
-    }
+    u8 spriteId = CreateSprite(&sStartOwnerNameSpriteTemplate, x, y, 0);
+    StartSpriteAnim(&gSprites[spriteId], NUM_PRESS_START_FRAMES);
 }
 
 #undef sAnimate
 #undef sTimer
+
 
 // Defines for SpriteCB_PokemonLogoShine
 enum {
@@ -495,13 +457,8 @@ static void SpriteCB_PokemonLogoShine(struct Sprite *sprite)
 
             // Flash the background green for 4 frames of movement.
             // Otherwise use the updating color.
-            if (sprite->x == DISPLAY_WIDTH / 2 + (3 * SHINE_SPEED)
-             || sprite->x == DISPLAY_WIDTH / 2 + (4 * SHINE_SPEED)
-             || sprite->x == DISPLAY_WIDTH / 2 + (5 * SHINE_SPEED)
-             || sprite->x == DISPLAY_WIDTH / 2 + (6 * SHINE_SPEED))
-                gPlttBufferFaded[0] = RGB(24, 31, 12);
-            else
-                gPlttBufferFaded[0] = backgroundColor;
+            // edit: changed 
+            gPlttBufferFaded[0] = backgroundColor;
         }
 
         sprite->x += SHINE_SPEED;
@@ -595,22 +552,22 @@ void CB2_InitTitleScreen(void)
         gMain.state = 1;
         break;
     case 1:
-        // bg2
         LZ77UnCompVram(gTitleScreenPokemonLogoGfx, (void *)(BG_CHAR_ADDR(0)));
         LZ77UnCompVram(gTitleScreenPokemonLogoTilemap, (void *)(BG_SCREEN_ADDR(9)));
         LoadPalette(gTitleScreenBgPalettes, BG_PLTT_ID(0), 15 * PLTT_SIZE_4BPP);
-        // bg3
-        LZ77UnCompVram(sTitleScreenRayquazaGfx, (void *)(BG_CHAR_ADDR(2)));
-        LZ77UnCompVram(sTitleScreenRayquazaTilemap, (void *)(BG_SCREEN_ADDR(26)));
+        // bg0
+        LZ77UnCompVram(gBackgroundGfx, (void *)(BG_CHAR_ADDR(2)));
+        LZ77UnCompVram(gBackgroundTilemap, (void *)(BG_SCREEN_ADDR(26)));
+        LoadPalette(gBackgroundPal, BG_PLTT_ID(14), 15 * PLTT_SIZE_4BPP);
         // bg1
-        LZ77UnCompVram(sTitleScreenCloudsGfx, (void *)(BG_CHAR_ADDR(3)));
-        LZ77UnCompVram(gTitleScreenCloudsTilemap, (void *)(BG_SCREEN_ADDR(27)));
+        // LZ77UnCompVram(sTitleScreenCloudsGfx, (void *)(BG_CHAR_ADDR(3)));
+        // LZ77UnCompVram(gTitleScreenCloudsTilemap, (void *)(BG_SCREEN_ADDR(27)));
         ScanlineEffect_Stop();
         ResetTasks();
         ResetSpriteData();
         FreeAllSpritePalettes();
         gReservedSpritePaletteCount = 9;
-        LoadCompressedSpriteSheet(&sSpriteSheet_EmeraldVersion[0]);
+        // LoadCompressedSpriteSheet(&sSpriteSheet_EmeraldVersion[0]);
         LoadCompressedSpriteSheet(&sSpriteSheet_PressStart[0]);
         LoadCompressedSpriteSheet(&sPokemonLogoShineSpriteSheet[0]);
         LoadPalette(gTitleScreenEmeraldVersionPal, OBJ_PLTT_ID(0), PLTT_SIZE_4BPP);
@@ -618,16 +575,19 @@ void CB2_InitTitleScreen(void)
         gMain.state = 2;
         break;
     case 2:
-    {
-        u8 taskId = CreateTask(Task_TitleScreenPhase1, 0);
+        {
+            u8 taskId = CreateTask(Task_TitleScreenPhase1, 0);
+            LoadPalette(gBackgroundPal, BG_PLTT_ID(14), 16 * sizeof(u16));
+            CreateStarAnimationTask();
 
-        gTasks[taskId].tCounter = 256;
-        gTasks[taskId].tSkipToNext = FALSE;
-        gTasks[taskId].tPointless = -16;
-        gTasks[taskId].tBg2Y = -32;
-        gMain.state = 3;
-        break;
-    }
+            
+            gTasks[taskId].tCounter = 256;
+            gTasks[taskId].tSkipToNext = FALSE;
+            gTasks[taskId].tPointless = -16;
+            gTasks[taskId].tBg2Y = -32;
+            gMain.state = 3;
+            break;
+        }
     case 3:
         BeginNormalPaletteFade(PALETTES_ALL, 1, 16, 0, RGB_WHITEALPHA);
         SetVBlankCallback(VBlankCB);
@@ -635,10 +595,14 @@ void CB2_InitTitleScreen(void)
         break;
     case 4:
         PanFadeAndZoomScreen(DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2, 0x100, 0);
-        SetGpuReg(REG_OFFSET_BG2X_L, -29 * 256);
+        SetGpuReg(REG_OFFSET_BG2X_L, -69 * 256); // -29 - 40 = -69
         SetGpuReg(REG_OFFSET_BG2X_H, -1);
-        SetGpuReg(REG_OFFSET_BG2Y_L, -32 * 256);
-        SetGpuReg(REG_OFFSET_BG2Y_H, -1);
+
+        // Posición Y (vertical)
+        SetGpuReg(REG_OFFSET_BG2Y_L, -32 * 256); // Valor original
+        SetGpuReg(REG_OFFSET_BG2Y_H, -1);        // Parte alta del valor de 32 bits
+
+
         SetGpuReg(REG_OFFSET_WIN0H, 0);
         SetGpuReg(REG_OFFSET_WIN0V, 0);
         SetGpuReg(REG_OFFSET_WIN1H, 0);
@@ -711,15 +675,6 @@ static void Task_TitleScreenPhase1(u8 taskId)
         SetGpuReg(REG_OFFSET_BLDALPHA, BLDALPHA_BLEND(16, 0));
         SetGpuReg(REG_OFFSET_BLDY, 0);
 
-        // Create left side of version banner
-        spriteId = CreateSprite(&sVersionBannerLeftSpriteTemplate, VERSION_BANNER_LEFT_X, VERSION_BANNER_Y, 0);
-        gSprites[spriteId].sAlphaBlendIdx = ARRAY_COUNT(gTitleScreenAlphaBlend);
-        gSprites[spriteId].sParentTaskId = taskId;
-
-        // Create right side of version banner
-        spriteId = CreateSprite(&sVersionBannerRightSpriteTemplate, VERSION_BANNER_RIGHT_X, VERSION_BANNER_Y, 0);
-        gSprites[spriteId].sParentTaskId = taskId;
-
         gTasks[taskId].tCounter = 144;
         gTasks[taskId].func = Task_TitleScreenPhase2;
     }
@@ -728,7 +683,7 @@ static void Task_TitleScreenPhase1(u8 taskId)
 #undef sParentTaskId
 #undef sAlphaBlendIdx
 
-// Create "Press Start" and copyright banners, and slide Pokémon logo up
+// Create "Press Start" and owner name banners, and slide Pokémon logo up
 static void Task_TitleScreenPhase2(u8 taskId)
 {
     u32 yPos;
@@ -756,8 +711,8 @@ static void Task_TitleScreenPhase2(u8 taskId)
                                     | DISPCNT_BG1_ON
                                     | DISPCNT_BG2_ON
                                     | DISPCNT_OBJ_ON);
-        CreatePressStartBanner(START_BANNER_X, 108);
-        CreateCopyrightBanner(START_BANNER_X, 148);
+        CreatePressStartBanner(64, 108);
+        CreateOwnerNameBanner(208, 148);
         gTasks[taskId].tBg1Y = 0;
         gTasks[taskId].func = Task_TitleScreenPhase3;
     }
@@ -775,6 +730,7 @@ static void Task_TitleScreenPhase2(u8 taskId)
     gTasks[taskId].data[5] = 15; // Unused
     gTasks[taskId].data[6] = 6;  // Unused
 }
+
 
 // Show Rayquaza silhouette and process main title screen input
 static void Task_TitleScreenPhase3(u8 taskId)
@@ -806,19 +762,25 @@ static void Task_TitleScreenPhase3(u8 taskId)
     {
         SetGpuReg(REG_OFFSET_BG2Y_L, 0);
         SetGpuReg(REG_OFFSET_BG2Y_H, 0);
-        if (++gTasks[taskId].tCounter & 1)
-        {
-            gTasks[taskId].tBg1Y++;
-            gBattle_BG1_Y = gTasks[taskId].tBg1Y / 2;
-            gBattle_BG1_X = 0;
-        }
-        UpdateLegendaryMarkingColor(gTasks[taskId].tCounter);
+
         if ((gMPlayInfo_BGM.status & 0xFFFF) == 0)
         {
             BeginNormalPaletteFade(PALETTES_ALL, 0, 0, 16, RGB_WHITEALPHA);
             SetMainCallback2(CB2_GoToCopyrightScreen);
         }
     }
+}
+
+
+static void Task_AnimateStars(u8 taskId)
+{
+    UpdateStarColors();
+}
+
+void CreateStarAnimationTask(void)
+{
+    InitStarAnimation();
+    CreateTask(Task_AnimateStars, 0);
 }
 
 static void CB2_GoToMainMenu(void)
@@ -854,16 +816,64 @@ static void CB2_GoToBerryFixScreen(void)
     }
 }
 
-static void UpdateLegendaryMarkingColor(u8 frameNum)
-{
-    if ((frameNum % 4) == 0) // Change color every 4th frame
-    {
-        s32 intensity = Cos(frameNum, 128) + 128;
-        s32 r = 31 - ((intensity * 32 - intensity) / 256);
-        s32 g = 31 - (intensity * 22 / 256);
-        s32 b = 12;
 
-        u16 color = RGB(r, g, b);
-        LoadPalette(&color, BG_PLTT_ID(14) + 15, sizeof(color));
-   }
+static void UpdateStarColors(void)
+{
+    u8 currentColor;
+    u8 currentSeqIdx;
+    u8 nextSeqIdx;
+    u8 fromColorIdx;
+    u8 toColorIdx;
+    u16 fromColor;
+    u16 toColor;
+    u16 interpColor;
+    u8 i;
+
+    if (!sStarAnim.animationActive)
+        return;
+
+    sStarAnim.frameCounter++;
+    if (sStarAnim.frameCounter >= 2) // Ajusta este valor para controlar la velocidad
+    {
+        sStarAnim.frameCounter = 0;
+        sStarAnim.transitionProgress++;
+        
+        if (sStarAnim.transitionProgress >= 32) // Duración de cada transición
+        {
+            sStarAnim.transitionProgress = 0;
+            
+            // Avanzar cada secuencia a su siguiente estado
+            for (i = 0; i < 3; i++)
+            {
+                sStarAnim.sequences[i].currentIndex++;
+                if (sStarAnim.sequences[i].currentIndex >= sStarAnim.sequences[i].length)
+                    sStarAnim.sequences[i].currentIndex = 0;
+            }
+        }
+    }
+
+    // Actualizar cada color (3,4,5) 
+    for (i = 0; i < 3; i++)
+    {
+        currentColor = i + COLOR_IDX_DIM; // Convertir índice a color actual (3,4,5)
+        currentSeqIdx = sStarAnim.sequences[i].currentIndex;
+        nextSeqIdx = (currentSeqIdx + 1) % sStarAnim.sequences[i].length;
+        
+        fromColorIdx = sStarAnim.sequences[i].sequence[currentSeqIdx];
+        toColorIdx = sStarAnim.sequences[i].sequence[nextSeqIdx];
+        
+        fromColor = sStarAnim.savedColors[fromColorIdx - COLOR_IDX_BACKGROUND];
+        toColor = sStarAnim.savedColors[toColorIdx - COLOR_IDX_BACKGROUND];
+        
+        // Calcular color interpolado
+        interpColor = RGB(
+            ((sStarAnim.transitionProgress * (GET_R(toColor) - GET_R(fromColor))) / 32) + GET_R(fromColor),
+            ((sStarAnim.transitionProgress * (GET_G(toColor) - GET_G(fromColor))) / 32) + GET_G(fromColor),
+            ((sStarAnim.transitionProgress * (GET_B(toColor) - GET_B(fromColor))) / 32) + GET_B(fromColor)
+        );
+        
+        // Aplicar el color interpolado
+        LoadPalette(&interpColor, BG_PLTT_ID(14) + currentColor, sizeof(u16));
+    }
 }
+
