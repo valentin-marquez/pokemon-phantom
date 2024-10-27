@@ -112,25 +112,26 @@ extern const struct CompressedSpriteSheet gBattleAnimPicTable[];
 extern const struct CompressedSpritePalette gBattleAnimPaletteTable[];
 extern const struct SpriteTemplate gAncientPowerRockSpriteTemplate[];
 
-enum {
+enum
+{
     COPYRIGHT_INITIALIZE,
     COPYRIGHT_START_FADE = 140,
     COPYRIGHT_START_INTRO,
 };
 
-#define TAG_VOLBEAT   1500
-#define TAG_TORCHIC   1501
+#define TAG_VOLBEAT 1500
+#define TAG_TORCHIC 1501
 #define TAG_MANECTRIC 1502
 #define TAG_LIGHTNING 1503
-#define TAG_BUBBLES   1504
-#define TAG_SPARKLE   1505
+#define TAG_BUBBLES 1504
+#define TAG_SPARKLE 1505
 
 #define GFXTAG_DROPS_LOGO 2000
-#define PALTAG_DROPS      2000
-#define PALTAG_LOGO       2001
+#define PALTAG_DROPS 2000
+#define PALTAG_LOGO 2001
 
 #define TAG_FLYGON_SILHOUETTE 2002
-#define TAG_RAYQUAZA_ORB      2003
+#define TAG_RAYQUAZA_ORB 2003
 
 #define COLOSSEUM_GAME_CODE 0x65366347 // "Gc6e" in ASCII
 
@@ -144,35 +145,35 @@ enum {
     to trigger actions or progress through the cutscene.
     The values for these are defined contiguously below.
 */
-#define TIMER_BIG_DROP_START             76
-#define TIMER_LOGO_APPEAR               128
-#define TIMER_LOGO_LETTERS_COLOR        144
-#define TIMER_BIG_DROP_FALLS            251
-#define TIMER_LOGO_BLEND_OUT            256
-#define TIMER_LOGO_DISAPPEAR            272
-#define TIMER_SMALL_DROP_1              368
-#define TIMER_SMALL_DROP_2              384
-#define TIMER_SPARKLES                  560
-#define TIMER_FLYGON_SILHOUETTE_APPEAR  832
-#define TIMER_END_PAN_UP                904
-#define TIMER_END_SCENE_1              1007
-#define TIMER_START_SCENE_2            1026
-#define TIMER_MANECTRIC_ENTER          1088
-#define TIMER_PLAYER_DRIFT_BACK        1109
-#define TIMER_MANECTRIC_RUN_CIRCULAR   1168
-#define TIMER_PLAYER_MOVE_FORWARD      1214
-#define TIMER_TORCHIC_ENTER            1224
-#define TIMER_FLYGON_ENTER             1394
-#define TIMER_PLAYER_MOVE_BACKWARD     1398
-#define TIMER_PLAYER_HOLD_POSITION     1576
-#define TIMER_PLAYER_EXIT              1727
-#define TIMER_TORCHIC_SPEED_UP         1735
-#define TIMER_TORCHIC_EXIT             1856
-#define TIMER_END_SCENE_2              1946
-#define TIMER_START_SCENE_3            2068
+#define TIMER_BIG_DROP_START 76
+#define TIMER_LOGO_APPEAR 128
+#define TIMER_LOGO_LETTERS_COLOR 144
+#define TIMER_BIG_DROP_FALLS 251
+#define TIMER_LOGO_BLEND_OUT 256
+#define TIMER_LOGO_DISAPPEAR 272
+#define TIMER_SMALL_DROP_1 368
+#define TIMER_SMALL_DROP_2 384
+#define TIMER_SPARKLES 560
+#define TIMER_FLYGON_SILHOUETTE_APPEAR 832
+#define TIMER_END_PAN_UP 904
+#define TIMER_END_SCENE_1 1007
+#define TIMER_START_SCENE_2 1026
+#define TIMER_MANECTRIC_ENTER 1088
+#define TIMER_PLAYER_DRIFT_BACK 1109
+#define TIMER_MANECTRIC_RUN_CIRCULAR 1168
+#define TIMER_PLAYER_MOVE_FORWARD 1214
+#define TIMER_TORCHIC_ENTER 1224
+#define TIMER_FLYGON_ENTER 1394
+#define TIMER_PLAYER_MOVE_BACKWARD 1398
+#define TIMER_PLAYER_HOLD_POSITION 1576
+#define TIMER_PLAYER_EXIT 1727
+#define TIMER_TORCHIC_SPEED_UP 1735
+#define TIMER_TORCHIC_EXIT 1856
+#define TIMER_END_SCENE_2 1946
+#define TIMER_START_SCENE_3 2068
 // timer is reset for scene 3
-#define TIMER_POKEBALL_FADE              28
-#define TIMER_START_LEGENDARIES          43
+#define TIMER_POKEBALL_FADE 28
+#define TIMER_START_LEGENDARIES 43
 
 static EWRAM_DATA u16 sIntroCharacterGender = 0;
 static EWRAM_DATA u16 UNUSED sUnusedVar = 0;
@@ -181,458 +182,498 @@ static EWRAM_DATA u16 sFlygonYOffset = 0;
 COMMON_DATA u32 gIntroFrameCounter = 0;
 COMMON_DATA struct GcmbStruct gMultibootProgramStruct = {0};
 
-static const u16 sIntroDrops_Pal[]            = INCBIN_U16("graphics/intro/scene_1/drops.gbapal");
-static const u16 sIntroLogo_Pal[]             = INCBIN_U16("graphics/intro/scene_1/logo.gbapal");
-static const u32 sIntroDropsLogo_Gfx[]        = INCBIN_U32("graphics/intro/scene_1/drops_logo.4bpp.lz");
-static const u16 sIntro1Bg_Pal[]              = INCBIN_U16("graphics/intro/scene_1/bg.gbapal"); // 16 x 16
-static const u32 sIntro1Bg0_Tilemap[]         = INCBIN_U32("graphics/intro/scene_1/bg0_map.bin.lz");
-static const u32 sIntro1Bg1_Tilemap[]         = INCBIN_U32("graphics/intro/scene_1/bg1_map.bin.lz");
-static const u32 sIntro1Bg2_Tilemap[]         = INCBIN_U32("graphics/intro/scene_1/bg2_map.bin.lz");
-static const u32 sIntro1Bg3_Tilemap[]         = INCBIN_U32("graphics/intro/scene_1/bg3_map.bin.lz");
-static const u32 sIntro1Bg_Gfx[]              = INCBIN_U32("graphics/intro/scene_1/bg.4bpp.lz");
-static const u16 sIntroPokeball_Pal[]         = INCBIN_U16("graphics/intro/scene_3/pokeball.gbapal");
-static const u32 sIntroPokeball_Tilemap[]     = INCBIN_U32("graphics/intro/scene_3/pokeball_map.bin.lz");
-static const u32 sIntroPokeball_Gfx[]         = INCBIN_U32("graphics/intro/scene_3/pokeball.8bpp.lz");
-static const u16 sIntroStreaks_Pal[]          = INCBIN_U16("graphics/intro/scene_3/streaks.gbapal"); // Unused
-static const u32 sIntroStreaks_Gfx[]          = INCBIN_U32("graphics/intro/scene_3/streaks.4bpp.lz"); // Unused
-static const u32 sIntroStreaks_Tilemap[]      = INCBIN_U32("graphics/intro/scene_3/streaks_map.bin.lz"); // Unused
-static const u16 sIntroRayquzaOrb_Pal[]       = INCBIN_U16("graphics/intro/scene_3/rayquaza_orb.gbapal");
-static const u16 sIntroMisc_Pal[]             = INCBIN_U16("graphics/intro/scene_3/misc.gbapal"); // Unused
-static const u32 sIntroMisc_Gfx[]             = INCBIN_U32("graphics/intro/scene_3/misc.4bpp.lz"); // Rayquza orb, and misc unused gfx
+static const u16 sIntroDrops_Pal[] = INCBIN_U16("graphics/intro/scene_1/drops.gbapal");
+static const u16 sIntroLogo_Pal[] = INCBIN_U16("graphics/intro/scene_1/logo.gbapal");
+static const u32 sIntroDropsLogo_Gfx[] = INCBIN_U32("graphics/intro/scene_1/drops_logo.4bpp.lz");
+static const u16 sIntro1Bg_Pal[] = INCBIN_U16("graphics/intro/scene_1/bg.gbapal"); // 16 x 16
+static const u32 sIntro1Bg0_Tilemap[] = INCBIN_U32("graphics/intro/scene_1/bg0_map.bin.lz");
+static const u32 sIntro1Bg1_Tilemap[] = INCBIN_U32("graphics/intro/scene_1/bg1_map.bin.lz");
+static const u32 sIntro1Bg2_Tilemap[] = INCBIN_U32("graphics/intro/scene_1/bg2_map.bin.lz");
+static const u32 sIntro1Bg3_Tilemap[] = INCBIN_U32("graphics/intro/scene_1/bg3_map.bin.lz");
+static const u32 sIntro1Bg_Gfx[] = INCBIN_U32("graphics/intro/scene_1/bg.4bpp.lz");
+static const u16 sIntroPokeball_Pal[] = INCBIN_U16("graphics/intro/scene_3/pokeball.gbapal");
+static const u32 sIntroPokeball_Tilemap[] = INCBIN_U32("graphics/intro/scene_3/pokeball_map.bin.lz");
+static const u32 sIntroPokeball_Gfx[] = INCBIN_U32("graphics/intro/scene_3/pokeball.8bpp.lz");
+static const u16 sIntroStreaks_Pal[] = INCBIN_U16("graphics/intro/scene_3/streaks.gbapal");         // Unused
+static const u32 sIntroStreaks_Gfx[] = INCBIN_U32("graphics/intro/scene_3/streaks.4bpp.lz");        // Unused
+static const u32 sIntroStreaks_Tilemap[] = INCBIN_U32("graphics/intro/scene_3/streaks_map.bin.lz"); // Unused
+static const u16 sIntroRayquzaOrb_Pal[] = INCBIN_U16("graphics/intro/scene_3/rayquaza_orb.gbapal");
+static const u16 sIntroMisc_Pal[] = INCBIN_U16("graphics/intro/scene_3/misc.gbapal");  // Unused
+static const u32 sIntroMisc_Gfx[] = INCBIN_U32("graphics/intro/scene_3/misc.4bpp.lz"); // Rayquza orb, and misc unused gfx
 static const u16 sIntroFlygonSilhouette_Pal[] = INCBIN_U16("graphics/intro/scene_1/flygon.gbapal");
-static const u32 sIntroLati_Gfx[]             = INCBIN_U32("graphics/intro/scene_1/lati.4bpp.lz"); // Unused
+static const u32 sIntroLati_Gfx[] = INCBIN_U32("graphics/intro/scene_1/lati.4bpp.lz"); // Unused
 static const u8 sUnusedData[] = {
     0x02, 0x03, 0x04, 0x05, 0x01, 0x01, 0x01, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x02, 0x0D,
     0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x02, 0x0D, 0x0E, 0x0F,
     0x10, 0x11, 0x12, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20, 0x21, 0x02, 0x0D, 0x0E, 0x0F, 0x10,
-    0x11, 0x12, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x00
-};
+    0x11, 0x12, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x00};
+
+// Used to blend "Emerald Version" as it passes over over the Pokémon banner.
+// Also used by the intro to blend the Game Freak name/logo in and out as they appear and disappear
+const u16 gTitleScreenAlphaBlend[64] =
+    {
+        BLDALPHA_BLEND(16, 0),
+        BLDALPHA_BLEND(16, 1),
+        BLDALPHA_BLEND(16, 2),
+        BLDALPHA_BLEND(16, 3),
+        BLDALPHA_BLEND(16, 4),
+        BLDALPHA_BLEND(16, 5),
+        BLDALPHA_BLEND(16, 6),
+        BLDALPHA_BLEND(16, 7),
+        BLDALPHA_BLEND(16, 8),
+        BLDALPHA_BLEND(16, 9),
+        BLDALPHA_BLEND(16, 10),
+        BLDALPHA_BLEND(16, 11),
+        BLDALPHA_BLEND(16, 12),
+        BLDALPHA_BLEND(16, 13),
+        BLDALPHA_BLEND(16, 14),
+        BLDALPHA_BLEND(16, 15),
+        BLDALPHA_BLEND(15, 16),
+        BLDALPHA_BLEND(14, 16),
+        BLDALPHA_BLEND(13, 16),
+        BLDALPHA_BLEND(12, 16),
+        BLDALPHA_BLEND(11, 16),
+        BLDALPHA_BLEND(10, 16),
+        BLDALPHA_BLEND(9, 16),
+        BLDALPHA_BLEND(8, 16),
+        BLDALPHA_BLEND(7, 16),
+        BLDALPHA_BLEND(6, 16),
+        BLDALPHA_BLEND(5, 16),
+        BLDALPHA_BLEND(4, 16),
+        BLDALPHA_BLEND(3, 16),
+        BLDALPHA_BLEND(2, 16),
+        BLDALPHA_BLEND(1, 16),
+        BLDALPHA_BLEND(0, 16),
+        [32 ... 63] = BLDALPHA_BLEND(0, 16)};
+
 static const struct CompressedSpriteSheet sSpriteSheet_Sparkle[] =
-{
-    {gIntroSparkle_Gfx, 0x400, TAG_SPARKLE},
-    {},
+    {
+        {gIntroSparkle_Gfx, 0x400, TAG_SPARKLE},
+        {},
 };
 static const struct SpritePalette sSpritePalette_Sparkle[] =
-{
-    {gIntroLightning_Pal, TAG_SPARKLE}, // Lightning palette re-used
-    {},
+    {
+        {gIntroLightning_Pal, TAG_SPARKLE}, // Lightning palette re-used
+        {},
 };
 static const struct OamData sOamData_Sparkle =
-{
-    .y = DISPLAY_HEIGHT,
-    .affineMode = ST_OAM_AFFINE_OFF,
-    .objMode = ST_OAM_OBJ_NORMAL,
-    .mosaic = FALSE,
-    .bpp = ST_OAM_4BPP,
-    .shape = SPRITE_SHAPE(16x16),
-    .x = 0,
-    .matrixNum = 0,
-    .size = SPRITE_SIZE(16x16),
-    .tileNum = 0,
-    .priority = 1,
-    .paletteNum = 0,
-    .affineParam = 0,
+    {
+        .y = DISPLAY_HEIGHT,
+        .affineMode = ST_OAM_AFFINE_OFF,
+        .objMode = ST_OAM_OBJ_NORMAL,
+        .mosaic = FALSE,
+        .bpp = ST_OAM_4BPP,
+        .shape = SPRITE_SHAPE(16x16),
+        .x = 0,
+        .matrixNum = 0,
+        .size = SPRITE_SIZE(16x16),
+        .tileNum = 0,
+        .priority = 1,
+        .paletteNum = 0,
+        .affineParam = 0,
 };
 static const union AnimCmd sAnim_Sparkle[] =
-{
-    ANIMCMD_FRAME(0, 2),
-    ANIMCMD_FRAME(4, 2),
-    ANIMCMD_FRAME(8, 2),
-    ANIMCMD_FRAME(12, 2),
-    ANIMCMD_FRAME(16, 2),
-    ANIMCMD_JUMP(0),
+    {
+        ANIMCMD_FRAME(0, 2),
+        ANIMCMD_FRAME(4, 2),
+        ANIMCMD_FRAME(8, 2),
+        ANIMCMD_FRAME(12, 2),
+        ANIMCMD_FRAME(16, 2),
+        ANIMCMD_JUMP(0),
 };
 static const union AnimCmd *const sAnims_Sparkle[] =
-{
-    sAnim_Sparkle,
+    {
+        sAnim_Sparkle,
 };
 static const struct SpriteTemplate sSpriteTemplate_Sparkle =
-{
-    .tileTag = TAG_SPARKLE,
-    .paletteTag = TAG_SPARKLE,
-    .oam = &sOamData_Sparkle,
-    .anims = sAnims_Sparkle,
-    .images = NULL,
-    .affineAnims = gDummySpriteAffineAnimTable,
-    .callback = SpriteCB_Sparkle,
+    {
+        .tileTag = TAG_SPARKLE,
+        .paletteTag = TAG_SPARKLE,
+        .oam = &sOamData_Sparkle,
+        .anims = sAnims_Sparkle,
+        .images = NULL,
+        .affineAnims = gDummySpriteAffineAnimTable,
+        .callback = SpriteCB_Sparkle,
 };
 static const u8 sSparkleCoords[][2] =
-{
-    {124, 40},
-    {102, 30},
-    { 77, 30},
-    { 54, 15},
-    {148,  9},
-    { 63, 28},
-    { 93, 40},
-    {148, 32},
-    {173, 41},
-    { 94, 20},
-    {208, 38},
-    {},
+    {
+        {124, 40},
+        {102, 30},
+        {77, 30},
+        {54, 15},
+        {148, 9},
+        {63, 28},
+        {93, 40},
+        {148, 32},
+        {173, 41},
+        {94, 20},
+        {208, 38},
+        {},
 };
 static const struct CompressedSpriteSheet sSpriteSheet_RunningPokemon[] =
-{
-    {gIntroVolbeat_Gfx, 0x400, TAG_VOLBEAT},
-    {gIntroTorchic_Gfx, 0xC00, TAG_TORCHIC},
-    {gIntroManectric_Gfx, 0x2000, TAG_MANECTRIC},
-    {},
+    {
+        {gIntroVolbeat_Gfx, 0x400, TAG_VOLBEAT},
+        {gIntroTorchic_Gfx, 0xC00, TAG_TORCHIC},
+        {gIntroManectric_Gfx, 0x2000, TAG_MANECTRIC},
+        {},
 };
 static const struct SpritePalette sSpritePalettes_RunningPokemon[] =
-{
-    {gIntroVolbeat_Pal, TAG_VOLBEAT},
-    {gIntroTorchic_Pal, TAG_TORCHIC},
-    {gIntroManectric_Pal, TAG_MANECTRIC},
-    {},
+    {
+        {gIntroVolbeat_Pal, TAG_VOLBEAT},
+        {gIntroTorchic_Pal, TAG_TORCHIC},
+        {gIntroManectric_Pal, TAG_MANECTRIC},
+        {},
 };
 static const struct OamData sOamData_Volbeat =
-{
-    .y = DISPLAY_HEIGHT,
-    .affineMode = ST_OAM_AFFINE_OFF,
-    .objMode = ST_OAM_OBJ_NORMAL,
-    .mosaic = FALSE,
-    .bpp = ST_OAM_4BPP,
-    .shape = SPRITE_SHAPE(32x32),
-    .x = 0,
-    .matrixNum = 0,
-    .size = SPRITE_SIZE(32x32),
-    .tileNum = 0,
-    .priority = 1,
-    .paletteNum = 0,
-    .affineParam = 0,
+    {
+        .y = DISPLAY_HEIGHT,
+        .affineMode = ST_OAM_AFFINE_OFF,
+        .objMode = ST_OAM_OBJ_NORMAL,
+        .mosaic = FALSE,
+        .bpp = ST_OAM_4BPP,
+        .shape = SPRITE_SHAPE(32x32),
+        .x = 0,
+        .matrixNum = 0,
+        .size = SPRITE_SIZE(32x32),
+        .tileNum = 0,
+        .priority = 1,
+        .paletteNum = 0,
+        .affineParam = 0,
 };
 static const union AnimCmd sAnim_Volbeat[] =
-{
-    ANIMCMD_FRAME(0, 2),
-    ANIMCMD_FRAME(16, 2),
-    ANIMCMD_JUMP(0),
+    {
+        ANIMCMD_FRAME(0, 2),
+        ANIMCMD_FRAME(16, 2),
+        ANIMCMD_JUMP(0),
 };
 static const union AnimCmd *const sAnims_Volbeat[] =
-{
-    sAnim_Volbeat,
+    {
+        sAnim_Volbeat,
 };
 static const struct SpriteTemplate sSpriteTemplate_Volbeat =
-{
-    .tileTag = TAG_VOLBEAT,
-    .paletteTag = TAG_VOLBEAT,
-    .oam = &sOamData_Volbeat,
-    .anims = sAnims_Volbeat,
-    .images = NULL,
-    .affineAnims = gDummySpriteAffineAnimTable,
-    .callback = SpriteCB_Volbeat,
+    {
+        .tileTag = TAG_VOLBEAT,
+        .paletteTag = TAG_VOLBEAT,
+        .oam = &sOamData_Volbeat,
+        .anims = sAnims_Volbeat,
+        .images = NULL,
+        .affineAnims = gDummySpriteAffineAnimTable,
+        .callback = SpriteCB_Volbeat,
 };
 static const struct OamData sOamData_Torchic =
-{
-    .y = DISPLAY_HEIGHT,
-    .affineMode = ST_OAM_AFFINE_OFF,
-    .objMode = ST_OAM_OBJ_NORMAL,
-    .mosaic = FALSE,
-    .bpp = ST_OAM_4BPP,
-    .shape = SPRITE_SHAPE(32x32),
-    .x = 0,
-    .matrixNum = 0,
-    .size = SPRITE_SIZE(32x32),
-    .tileNum = 0,
-    .priority = 1,
-    .paletteNum = 0,
-    .affineParam = 0,
+    {
+        .y = DISPLAY_HEIGHT,
+        .affineMode = ST_OAM_AFFINE_OFF,
+        .objMode = ST_OAM_OBJ_NORMAL,
+        .mosaic = FALSE,
+        .bpp = ST_OAM_4BPP,
+        .shape = SPRITE_SHAPE(32x32),
+        .x = 0,
+        .matrixNum = 0,
+        .size = SPRITE_SIZE(32x32),
+        .tileNum = 0,
+        .priority = 1,
+        .paletteNum = 0,
+        .affineParam = 0,
 };
 static const union AnimCmd sAnim_Torchic_Walk[] =
-{
-    ANIMCMD_FRAME(0, 5),
-    ANIMCMD_FRAME(16, 5),
-    ANIMCMD_FRAME(32, 5),
-    ANIMCMD_FRAME(16, 5),
-    ANIMCMD_JUMP(0),
+    {
+        ANIMCMD_FRAME(0, 5),
+        ANIMCMD_FRAME(16, 5),
+        ANIMCMD_FRAME(32, 5),
+        ANIMCMD_FRAME(16, 5),
+        ANIMCMD_JUMP(0),
 };
 static const union AnimCmd sAnim_Torchic_Run[] =
-{
-    ANIMCMD_FRAME(0, 3),
-    ANIMCMD_FRAME(16, 3),
-    ANIMCMD_FRAME(32, 3),
-    ANIMCMD_FRAME(16, 3),
-    ANIMCMD_JUMP(0),
+    {
+        ANIMCMD_FRAME(0, 3),
+        ANIMCMD_FRAME(16, 3),
+        ANIMCMD_FRAME(32, 3),
+        ANIMCMD_FRAME(16, 3),
+        ANIMCMD_JUMP(0),
 };
 static const union AnimCmd sAnim_Torchic_Trip[] =
-{
-    ANIMCMD_FRAME(48, 4),
-    ANIMCMD_FRAME(64, 6),
-    ANIMCMD_FRAME(80, 0),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(48, 4),
+        ANIMCMD_FRAME(64, 6),
+        ANIMCMD_FRAME(80, 0),
+        ANIMCMD_END,
 };
-enum {
+enum
+{
     TORCHIC_ANIM_WALK,
     TORCHIC_ANIM_RUN,
     TORCHIC_ANIM_TRIP,
 };
 static const union AnimCmd *const sAnims_Torchic[] =
-{
-    [TORCHIC_ANIM_WALK] = sAnim_Torchic_Walk,
-    [TORCHIC_ANIM_RUN]  = sAnim_Torchic_Run,
-    [TORCHIC_ANIM_TRIP] = sAnim_Torchic_Trip,
+    {
+        [TORCHIC_ANIM_WALK] = sAnim_Torchic_Walk,
+        [TORCHIC_ANIM_RUN] = sAnim_Torchic_Run,
+        [TORCHIC_ANIM_TRIP] = sAnim_Torchic_Trip,
 };
 static const struct SpriteTemplate sSpriteTemplate_Torchic =
-{
-    .tileTag = TAG_TORCHIC,
-    .paletteTag = TAG_TORCHIC,
-    .oam = &sOamData_Torchic,
-    .anims = sAnims_Torchic,
-    .images = NULL,
-    .affineAnims = gDummySpriteAffineAnimTable,
-    .callback = SpriteCB_Torchic,
+    {
+        .tileTag = TAG_TORCHIC,
+        .paletteTag = TAG_TORCHIC,
+        .oam = &sOamData_Torchic,
+        .anims = sAnims_Torchic,
+        .images = NULL,
+        .affineAnims = gDummySpriteAffineAnimTable,
+        .callback = SpriteCB_Torchic,
 };
 static const struct OamData sOamData_Manectric =
-{
-    .y = DISPLAY_HEIGHT,
-    .affineMode = ST_OAM_AFFINE_OFF,
-    .objMode = ST_OAM_OBJ_NORMAL,
-    .mosaic = FALSE,
-    .bpp = ST_OAM_4BPP,
-    .shape = SPRITE_SHAPE(64x64),
-    .x = 0,
-    .matrixNum = 0,
-    .size = SPRITE_SIZE(64x64),
-    .tileNum = 0,
-    .priority = 1,
-    .paletteNum = 0,
-    .affineParam = 0,
+    {
+        .y = DISPLAY_HEIGHT,
+        .affineMode = ST_OAM_AFFINE_OFF,
+        .objMode = ST_OAM_OBJ_NORMAL,
+        .mosaic = FALSE,
+        .bpp = ST_OAM_4BPP,
+        .shape = SPRITE_SHAPE(64x64),
+        .x = 0,
+        .matrixNum = 0,
+        .size = SPRITE_SIZE(64x64),
+        .tileNum = 0,
+        .priority = 1,
+        .paletteNum = 0,
+        .affineParam = 0,
 };
 static const union AnimCmd sAnim_Manectric[] =
-{
-    ANIMCMD_FRAME(0, 4),
-    ANIMCMD_FRAME(64, 4),
-    ANIMCMD_FRAME(128, 4),
-    ANIMCMD_FRAME(192, 4),
-    ANIMCMD_JUMP(0),
+    {
+        ANIMCMD_FRAME(0, 4),
+        ANIMCMD_FRAME(64, 4),
+        ANIMCMD_FRAME(128, 4),
+        ANIMCMD_FRAME(192, 4),
+        ANIMCMD_JUMP(0),
 };
 static const union AnimCmd *const sAnims_Manectric[] =
-{
-    sAnim_Manectric,
+    {
+        sAnim_Manectric,
 };
 static const struct SpriteTemplate sSpriteTemplate_Manectric =
-{
-    .tileTag = TAG_MANECTRIC,
-    .paletteTag = TAG_MANECTRIC,
-    .oam = &sOamData_Manectric,
-    .anims = sAnims_Manectric,
-    .images = NULL,
-    .affineAnims = gDummySpriteAffineAnimTable,
-    .callback = SpriteCB_Manectric,
+    {
+        .tileTag = TAG_MANECTRIC,
+        .paletteTag = TAG_MANECTRIC,
+        .oam = &sOamData_Manectric,
+        .anims = sAnims_Manectric,
+        .images = NULL,
+        .affineAnims = gDummySpriteAffineAnimTable,
+        .callback = SpriteCB_Manectric,
 };
 static const struct CompressedSpriteSheet sSpriteSheet_Lightning[] =
-{
-    {gIntroLightning_Gfx, 0xC00, TAG_LIGHTNING},
-    {},
+    {
+        {gIntroLightning_Gfx, 0xC00, TAG_LIGHTNING},
+        {},
 };
 static const struct SpritePalette sSpritePalette_Lightning[] =
-{
-    {gIntroLightning_Pal, TAG_LIGHTNING},
-    {},
+    {
+        {gIntroLightning_Pal, TAG_LIGHTNING},
+        {},
 };
 static const struct OamData sOamData_Lightning =
-{
-    .y = DISPLAY_HEIGHT,
-    .affineMode = ST_OAM_AFFINE_OFF,
-    .objMode = ST_OAM_OBJ_NORMAL,
-    .mosaic = FALSE,
-    .bpp = ST_OAM_4BPP,
-    .shape = SPRITE_SHAPE(32x32),
-    .x = 0,
-    .matrixNum = 0,
-    .size = SPRITE_SIZE(32x32),
-    .tileNum = 0,
-    .priority = 0,
-    .paletteNum = 0,
-    .affineParam = 0,
+    {
+        .y = DISPLAY_HEIGHT,
+        .affineMode = ST_OAM_AFFINE_OFF,
+        .objMode = ST_OAM_OBJ_NORMAL,
+        .mosaic = FALSE,
+        .bpp = ST_OAM_4BPP,
+        .shape = SPRITE_SHAPE(32x32),
+        .x = 0,
+        .matrixNum = 0,
+        .size = SPRITE_SIZE(32x32),
+        .tileNum = 0,
+        .priority = 0,
+        .paletteNum = 0,
+        .affineParam = 0,
 };
 static const union AnimCmd sAnim_Lightning_Top[] =
-{
-    ANIMCMD_FRAME(0, 2),
-    ANIMCMD_FRAME(48, 2),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(0, 2),
+        ANIMCMD_FRAME(48, 2),
+        ANIMCMD_END,
 };
 static const union AnimCmd sAnim_Lightning_Middle[] =
-{
-    ANIMCMD_FRAME(16, 2),
-    ANIMCMD_FRAME(64, 2),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(16, 2),
+        ANIMCMD_FRAME(64, 2),
+        ANIMCMD_END,
 };
 static const union AnimCmd sAnim_Lightning_Bottom[] =
-{
-    ANIMCMD_FRAME(32, 2),
-    ANIMCMD_FRAME(80, 2),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(32, 2),
+        ANIMCMD_FRAME(80, 2),
+        ANIMCMD_END,
 };
 static const union AnimCmd *const sAnims_Lightning[] =
-{
-    sAnim_Lightning_Top,
-    sAnim_Lightning_Middle,
-    sAnim_Lightning_Bottom,
+    {
+        sAnim_Lightning_Top,
+        sAnim_Lightning_Middle,
+        sAnim_Lightning_Bottom,
 };
 static const struct SpriteTemplate sSpriteTemplate_Lightning =
-{
-    .tileTag = TAG_LIGHTNING,
-    .paletteTag = TAG_LIGHTNING,
-    .oam = &sOamData_Lightning,
-    .anims = sAnims_Lightning,
-    .images = NULL,
-    .affineAnims = gDummySpriteAffineAnimTable,
-    .callback = SpriteCB_Lightning,
+    {
+        .tileTag = TAG_LIGHTNING,
+        .paletteTag = TAG_LIGHTNING,
+        .oam = &sOamData_Lightning,
+        .anims = sAnims_Lightning,
+        .images = NULL,
+        .affineAnims = gDummySpriteAffineAnimTable,
+        .callback = SpriteCB_Lightning,
 };
 // x coord, anim number, speed
 // Smaller anim numbers are larger rocks, and are given slower speeds
 static const s16 sGroudonRockData[][3] =
-{
-    {104, 0, 0x0C0},
-    {142, 3, 0x280},
-    { 83, 1, 0x180},
-    {155, 0, 0x080},
-    { 56, 2, 0x200},
-    {174, 1, 0x100},
+    {
+        {104, 0, 0x0C0},
+        {142, 3, 0x280},
+        {83, 1, 0x180},
+        {155, 0, 0x080},
+        {56, 2, 0x200},
+        {174, 1, 0x100},
 };
 static const struct CompressedSpriteSheet sSpriteSheet_Bubbles[] =
-{
-    {gIntroBubbles_Gfx, 0x600, TAG_BUBBLES},
-    {},
+    {
+        {gIntroBubbles_Gfx, 0x600, TAG_BUBBLES},
+        {},
 };
 static const struct SpritePalette sSpritePalette_Bubbles[] =
-{
-    {gIntroBubbles_Pal, TAG_BUBBLES},
-    {},
+    {
+        {gIntroBubbles_Pal, TAG_BUBBLES},
+        {},
 };
 #define NUM_BUBBLES_IN_SET 6
 // x coord, y coord, delay before animation
 // Can be produced in two different sets depending on the function called to create the sprites
 static const s16 sKyogreBubbleData[NUM_BUBBLES_IN_SET * 2][3] =
-{
-    // Set 1, for Kyogre's body
-    { 66,  64,  1},
-    { 96,  96,  8},
-    {128,  64,  1},
-    {144,  48,  8},
-    {160,  72,  1},
-    {176,  96,  8},
-    // Set 2, for Kyogre's fins
-    { 96,  96,  4},
-    {112, 104,  8},
-    {128,  96,  4},
-    { 88,  32,  4},
-    {104,  24,  8},
-    {120,  32,  4},
+    {
+        // Set 1, for Kyogre's body
+        {66, 64, 1},
+        {96, 96, 8},
+        {128, 64, 1},
+        {144, 48, 8},
+        {160, 72, 1},
+        {176, 96, 8},
+        // Set 2, for Kyogre's fins
+        {96, 96, 4},
+        {112, 104, 8},
+        {128, 96, 4},
+        {88, 32, 4},
+        {104, 24, 8},
+        {120, 32, 4},
 };
 static const struct OamData sOamData_Bubbles =
-{
-    .y = DISPLAY_HEIGHT,
-    .affineMode = ST_OAM_AFFINE_OFF,
-    .objMode = ST_OAM_OBJ_NORMAL,
-    .mosaic = FALSE,
-    .bpp = ST_OAM_4BPP,
-    .shape = SPRITE_SHAPE(16x32),
-    .x = 0,
-    .matrixNum = 0,
-    .size = SPRITE_SIZE(16x32),
-    .tileNum = 0,
-    .priority = 0,
-    .paletteNum = 0,
-    .affineParam = 0,
+    {
+        .y = DISPLAY_HEIGHT,
+        .affineMode = ST_OAM_AFFINE_OFF,
+        .objMode = ST_OAM_OBJ_NORMAL,
+        .mosaic = FALSE,
+        .bpp = ST_OAM_4BPP,
+        .shape = SPRITE_SHAPE(16x32),
+        .x = 0,
+        .matrixNum = 0,
+        .size = SPRITE_SIZE(16x32),
+        .tileNum = 0,
+        .priority = 0,
+        .paletteNum = 0,
+        .affineParam = 0,
 };
 static const union AnimCmd sAnim_Bubbles[] =
-{
-    ANIMCMD_FRAME(0, 4),
-    ANIMCMD_FRAME(8, 4),
-    ANIMCMD_FRAME(16, 4),
-    ANIMCMD_FRAME(24, 4),
-    ANIMCMD_FRAME(32, 4),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(0, 4),
+        ANIMCMD_FRAME(8, 4),
+        ANIMCMD_FRAME(16, 4),
+        ANIMCMD_FRAME(24, 4),
+        ANIMCMD_FRAME(32, 4),
+        ANIMCMD_END,
 };
 static const union AnimCmd *const sAnims_Bubbles[] =
-{
-    sAnim_Bubbles,
+    {
+        sAnim_Bubbles,
 };
 static const struct SpriteTemplate sSpriteTemplate_Bubbles =
-{
-    .tileTag = TAG_BUBBLES,
-    .paletteTag = TAG_BUBBLES,
-    .oam = &sOamData_Bubbles,
-    .anims = sAnims_Bubbles,
-    .images = NULL,
-    .affineAnims = gDummySpriteAffineAnimTable,
-    .callback = SpriteCB_KyogreBubbles,
+    {
+        .tileTag = TAG_BUBBLES,
+        .paletteTag = TAG_BUBBLES,
+        .oam = &sOamData_Bubbles,
+        .anims = sAnims_Bubbles,
+        .images = NULL,
+        .affineAnims = gDummySpriteAffineAnimTable,
+        .callback = SpriteCB_KyogreBubbles,
 };
 static const struct OamData sOamData_WaterDrop =
-{
-    .y = DISPLAY_HEIGHT,
-    .affineMode = ST_OAM_AFFINE_OFF,
-    .objMode = ST_OAM_OBJ_NORMAL,
-    .mosaic = FALSE,
-    .bpp = ST_OAM_4BPP,
-    .shape = SPRITE_SHAPE(32x32),
-    .x = 0,
-    .matrixNum = 0,
-    .size = SPRITE_SIZE(32x32),
-    .tileNum = 0,
-    .priority = 0,
-    .paletteNum = 0,
-    .affineParam = 0,
+    {
+        .y = DISPLAY_HEIGHT,
+        .affineMode = ST_OAM_AFFINE_OFF,
+        .objMode = ST_OAM_OBJ_NORMAL,
+        .mosaic = FALSE,
+        .bpp = ST_OAM_4BPP,
+        .shape = SPRITE_SHAPE(32x32),
+        .x = 0,
+        .matrixNum = 0,
+        .size = SPRITE_SIZE(32x32),
+        .tileNum = 0,
+        .priority = 0,
+        .paletteNum = 0,
+        .affineParam = 0,
 };
-enum {
+enum
+{
     DROP_ANIM_UPPER_HALF,
     DROP_ANIM_LOWER_HALF,
     DROP_ANIM_REFLECTION,
     DROP_ANIM_RIPPLE,
 };
 static const union AnimCmd sAnim_WaterDrop_UpperHalf[] =
-{
-    ANIMCMD_FRAME(16, 8),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(16, 8),
+        ANIMCMD_END,
 };
 static const union AnimCmd sAnim_WaterDrop_LowerHalf[] =
-{
-    ANIMCMD_FRAME(24, 8),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(24, 8),
+        ANIMCMD_END,
 };
 static const union AnimCmd sAnim_WaterDrop_Reflection[] =
-{
-    ANIMCMD_FRAME(0, 8),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(0, 8),
+        ANIMCMD_END,
 };
 static const union AnimCmd sAnim_WaterDrop_Ripple[] =
-{
-    ANIMCMD_FRAME(48, 8),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(48, 8),
+        ANIMCMD_END,
 };
 static const union AnimCmd *const sAnims_WaterDrop[] =
-{
-    [DROP_ANIM_UPPER_HALF] = sAnim_WaterDrop_UpperHalf,
-    [DROP_ANIM_LOWER_HALF] = sAnim_WaterDrop_LowerHalf,
-    [DROP_ANIM_REFLECTION] = sAnim_WaterDrop_Reflection,
-    [DROP_ANIM_RIPPLE]     = sAnim_WaterDrop_Ripple,
+    {
+        [DROP_ANIM_UPPER_HALF] = sAnim_WaterDrop_UpperHalf,
+        [DROP_ANIM_LOWER_HALF] = sAnim_WaterDrop_LowerHalf,
+        [DROP_ANIM_REFLECTION] = sAnim_WaterDrop_Reflection,
+        [DROP_ANIM_RIPPLE] = sAnim_WaterDrop_Ripple,
 };
 static const struct SpriteTemplate sSpriteTemplate_WaterDrop =
-{
-    .tileTag = GFXTAG_DROPS_LOGO,
-    .paletteTag = PALTAG_DROPS,
-    .oam = &sOamData_WaterDrop,
-    .anims = sAnims_WaterDrop,
-    .images = NULL,
-    .affineAnims = gDummySpriteAffineAnimTable,
-    .callback = SpriteCB_WaterDrop,
+    {
+        .tileTag = GFXTAG_DROPS_LOGO,
+        .paletteTag = PALTAG_DROPS,
+        .oam = &sOamData_WaterDrop,
+        .anims = sAnims_WaterDrop,
+        .images = NULL,
+        .affineAnims = gDummySpriteAffineAnimTable,
+        .callback = SpriteCB_WaterDrop,
 };
 static const union AnimCmd sAnim_PlayerBicycle_Fast[] =
-{
-    ANIMCMD_FRAME(0, 4),
-    ANIMCMD_FRAME(64, 4),
-    ANIMCMD_FRAME(128, 4),
-    ANIMCMD_FRAME(192, 4),
-    ANIMCMD_JUMP(0),
+    {
+        ANIMCMD_FRAME(0, 4),
+        ANIMCMD_FRAME(64, 4),
+        ANIMCMD_FRAME(128, 4),
+        ANIMCMD_FRAME(192, 4),
+        ANIMCMD_JUMP(0),
 };
 static const union AnimCmd sAnim_PlayerBicycle_Slow[] =
-{
-    ANIMCMD_FRAME(0, 8),
-    ANIMCMD_FRAME(64, 8),
-    ANIMCMD_FRAME(128, 8),
-    ANIMCMD_FRAME(192, 8),
-    ANIMCMD_JUMP(0),
+    {
+        ANIMCMD_FRAME(0, 8),
+        ANIMCMD_FRAME(64, 8),
+        ANIMCMD_FRAME(128, 8),
+        ANIMCMD_FRAME(192, 8),
+        ANIMCMD_JUMP(0),
 };
 // The below two animations appear to be copied from the Credits version
 // of the player graphic, where additional frames are present to show
@@ -641,146 +682,147 @@ static const union AnimCmd sAnim_PlayerBicycle_Slow[] =
 // the player graphics data.
 // The above sAnim_PlayerBicycle_Slow, while valid, is likewise unused
 static const union AnimCmd sAnim_PlayerBicycle_LookBack[] =
-{
-    ANIMCMD_FRAME(256, 4),
-    ANIMCMD_FRAME(320, 4),
-    ANIMCMD_FRAME(384, 4),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(256, 4),
+        ANIMCMD_FRAME(320, 4),
+        ANIMCMD_FRAME(384, 4),
+        ANIMCMD_END,
 };
 static const union AnimCmd sAnim_PlayerBicycle_LookForward[] =
-{
-    ANIMCMD_FRAME(384, 16),
-    ANIMCMD_FRAME(320, 16),
-    ANIMCMD_FRAME(256, 16),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(384, 16),
+        ANIMCMD_FRAME(320, 16),
+        ANIMCMD_FRAME(256, 16),
+        ANIMCMD_END,
 };
 static const union AnimCmd *const sAnims_PlayerBicycle[] =
-{
-    sAnim_PlayerBicycle_Fast,
-    sAnim_PlayerBicycle_Slow,
-    sAnim_PlayerBicycle_LookBack,
-    sAnim_PlayerBicycle_LookForward,
+    {
+        sAnim_PlayerBicycle_Fast,
+        sAnim_PlayerBicycle_Slow,
+        sAnim_PlayerBicycle_LookBack,
+        sAnim_PlayerBicycle_LookForward,
 };
 static const struct OamData sOamData_GameFreakLetter =
-{
-    .y = DISPLAY_HEIGHT,
-    .affineMode = ST_OAM_AFFINE_DOUBLE,
-    .objMode = ST_OAM_OBJ_NORMAL,
-    .mosaic = FALSE,
-    .bpp = ST_OAM_4BPP,
-    .shape = SPRITE_SHAPE(16x16),
-    .x = 0,
-    .matrixNum = 0,
-    .size = SPRITE_SIZE(16x16),
-    .tileNum = 0,
-    .priority = 0,
-    .paletteNum = 0,
-    .affineParam = 0,
+    {
+        .y = DISPLAY_HEIGHT,
+        .affineMode = ST_OAM_AFFINE_DOUBLE,
+        .objMode = ST_OAM_OBJ_NORMAL,
+        .mosaic = FALSE,
+        .bpp = ST_OAM_4BPP,
+        .shape = SPRITE_SHAPE(16x16),
+        .x = 0,
+        .matrixNum = 0,
+        .size = SPRITE_SIZE(16x16),
+        .tileNum = 0,
+        .priority = 0,
+        .paletteNum = 0,
+        .affineParam = 0,
 };
 static const struct OamData sOamData_PresentsLetter =
-{
-    .y = DISPLAY_HEIGHT,
-    .affineMode = ST_OAM_AFFINE_OFF,
-    .objMode = ST_OAM_OBJ_NORMAL,
-    .mosaic = FALSE,
-    .bpp = ST_OAM_4BPP,
-    .shape = SPRITE_SHAPE(8x8),
-    .x = 0,
-    .matrixNum = 0,
-    .size = SPRITE_SIZE(8x8),
-    .tileNum = 0,
-    .priority = 0,
-    .paletteNum = 0,
-    .affineParam = 0,
+    {
+        .y = DISPLAY_HEIGHT,
+        .affineMode = ST_OAM_AFFINE_OFF,
+        .objMode = ST_OAM_OBJ_NORMAL,
+        .mosaic = FALSE,
+        .bpp = ST_OAM_4BPP,
+        .shape = SPRITE_SHAPE(8x8),
+        .x = 0,
+        .matrixNum = 0,
+        .size = SPRITE_SIZE(8x8),
+        .tileNum = 0,
+        .priority = 0,
+        .paletteNum = 0,
+        .affineParam = 0,
 };
 static const struct OamData sOamData_GameFreakLogo =
-{
-    .y = DISPLAY_HEIGHT,
-    .affineMode = ST_OAM_AFFINE_DOUBLE,
-    .objMode = ST_OAM_OBJ_BLEND,
-    .mosaic = FALSE,
-    .bpp = ST_OAM_4BPP,
-    .shape = SPRITE_SHAPE(32x64),
-    .x = 0,
-    .matrixNum = 0,
-    .size = SPRITE_SIZE(32x64),
-    .tileNum = 0,
-    .priority = 0,
-    .paletteNum = 0,
-    .affineParam = 0,
+    {
+        .y = DISPLAY_HEIGHT,
+        .affineMode = ST_OAM_AFFINE_DOUBLE,
+        .objMode = ST_OAM_OBJ_BLEND,
+        .mosaic = FALSE,
+        .bpp = ST_OAM_4BPP,
+        .shape = SPRITE_SHAPE(32x64),
+        .x = 0,
+        .matrixNum = 0,
+        .size = SPRITE_SIZE(32x64),
+        .tileNum = 0,
+        .priority = 0,
+        .paletteNum = 0,
+        .affineParam = 0,
 };
 static const union AnimCmd sAnim_GameFreakLetter_G[] =
-{
-    ANIMCMD_FRAME(80, 8),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(80, 8),
+        ANIMCMD_END,
 };
 static const union AnimCmd sAnim_GameFreakLetter_A[] =
-{
-    ANIMCMD_FRAME(84, 8),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(84, 8),
+        ANIMCMD_END,
 };
 static const union AnimCmd sAnim_GameFreakLetter_M[] =
-{
-    ANIMCMD_FRAME(88, 8),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(88, 8),
+        ANIMCMD_END,
 };
 static const union AnimCmd sAnim_GameFreakLetter_E[] =
-{
-    ANIMCMD_FRAME(92, 8),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(92, 8),
+        ANIMCMD_END,
 };
 static const union AnimCmd sAnim_GameFreakLetter_F[] =
-{
-    ANIMCMD_FRAME(96, 8),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(96, 8),
+        ANIMCMD_END,
 };
 static const union AnimCmd sAnim_GameFreakLetter_R[] =
-{
-    ANIMCMD_FRAME(100, 8),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(100, 8),
+        ANIMCMD_END,
 };
 static const union AnimCmd sAnim_GameFreakLetter_K[] =
-{
-    ANIMCMD_FRAME(104, 8),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(104, 8),
+        ANIMCMD_END,
 };
 static const union AnimCmd sAnim_PresentsLetter_P[] =
-{
-    ANIMCMD_FRAME(112, 8),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(112, 8),
+        ANIMCMD_END,
 };
 static const union AnimCmd sAnim_PresentsLetter_R[] =
-{
-    ANIMCMD_FRAME(113, 8),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(113, 8),
+        ANIMCMD_END,
 };
 static const union AnimCmd sAnim_PresentsLetter_E[] =
-{
-    ANIMCMD_FRAME(114, 8),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(114, 8),
+        ANIMCMD_END,
 };
 static const union AnimCmd sAnim_PresentsLetter_S[] =
-{
-    ANIMCMD_FRAME(115, 8),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(115, 8),
+        ANIMCMD_END,
 };
 static const union AnimCmd sAnim_PresentsLetter_N[] =
-{
-    ANIMCMD_FRAME(116, 8),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(116, 8),
+        ANIMCMD_END,
 };
 static const union AnimCmd sAnim_PresentsLetter_T[] =
-{
-    ANIMCMD_FRAME(117, 8),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(117, 8),
+        ANIMCMD_END,
 };
 static const union AnimCmd sAnim_GameFreakLogo[] =
-{
-    ANIMCMD_FRAME(128, 8),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(128, 8),
+        ANIMCMD_END,
 };
 
-enum {
+enum
+{
     GAMEFREAK_G,
     GAMEFREAK_A,
     GAMEFREAK_M,
@@ -789,7 +831,8 @@ enum {
     GAMEFREAK_R,
     GAMEFREAK_K,
 };
-enum {
+enum
+{
     PRESENTS_P,
     PRESENTS_R,
     PRESENTS_E,
@@ -798,238 +841,237 @@ enum {
     PRESENTS_T,
 };
 static const union AnimCmd *const sAnims_GameFreakLetter[] =
-{
-    [GAMEFREAK_G] = sAnim_GameFreakLetter_G,
-    [GAMEFREAK_A] = sAnim_GameFreakLetter_A,
-    [GAMEFREAK_M] = sAnim_GameFreakLetter_M,
-    [GAMEFREAK_E] = sAnim_GameFreakLetter_E,
-    [GAMEFREAK_F] = sAnim_GameFreakLetter_F,
-    [GAMEFREAK_R] = sAnim_GameFreakLetter_R,
-    [GAMEFREAK_K] = sAnim_GameFreakLetter_K,
+    {
+        [GAMEFREAK_G] = sAnim_GameFreakLetter_G,
+        [GAMEFREAK_A] = sAnim_GameFreakLetter_A,
+        [GAMEFREAK_M] = sAnim_GameFreakLetter_M,
+        [GAMEFREAK_E] = sAnim_GameFreakLetter_E,
+        [GAMEFREAK_F] = sAnim_GameFreakLetter_F,
+        [GAMEFREAK_R] = sAnim_GameFreakLetter_R,
+        [GAMEFREAK_K] = sAnim_GameFreakLetter_K,
 };
 static const union AnimCmd *const sAnims_PresentsLetter[] =
-{
-    [PRESENTS_P] = sAnim_PresentsLetter_P,
-    [PRESENTS_R] = sAnim_PresentsLetter_R,
-    [PRESENTS_E] = sAnim_PresentsLetter_E,
-    [PRESENTS_S] = sAnim_PresentsLetter_S,
-    [PRESENTS_N] = sAnim_PresentsLetter_N,
-    [PRESENTS_T] = sAnim_PresentsLetter_T,
+    {
+        [PRESENTS_P] = sAnim_PresentsLetter_P,
+        [PRESENTS_R] = sAnim_PresentsLetter_R,
+        [PRESENTS_E] = sAnim_PresentsLetter_E,
+        [PRESENTS_S] = sAnim_PresentsLetter_S,
+        [PRESENTS_N] = sAnim_PresentsLetter_N,
+        [PRESENTS_T] = sAnim_PresentsLetter_T,
 };
 static const union AnimCmd *const sAnims_GameFreakLogo[] =
-{
-    sAnim_GameFreakLogo,
+    {
+        sAnim_GameFreakLogo,
 };
 #define NUM_GF_LETTERS 9 // Letters in "Game Freak"
 static const s16 sGameFreakLetterData[NUM_GF_LETTERS][2] =
-{
-    // Letter,   x offset
-    {GAMEFREAK_G, -72},
-    {GAMEFREAK_A, -56},
-    {GAMEFREAK_M, -40},
-    {GAMEFREAK_E, -24},
-    {GAMEFREAK_F,   8},
-    {GAMEFREAK_R,  24},
-    {GAMEFREAK_E,  40},
-    {GAMEFREAK_A,  56},
-    {GAMEFREAK_K,  72},
+    {
+        // Letter,   x offset
+        {GAMEFREAK_G, -72},
+        {GAMEFREAK_A, -56},
+        {GAMEFREAK_M, -40},
+        {GAMEFREAK_E, -24},
+        {GAMEFREAK_F, 8},
+        {GAMEFREAK_R, 24},
+        {GAMEFREAK_E, 40},
+        {GAMEFREAK_A, 56},
+        {GAMEFREAK_K, 72},
 };
 static const s16 sPresentsLetterData[][2] =
-{
-    // Letter,   x offset
-    {PRESENTS_P, -28},
-    {PRESENTS_R, -20},
-    {PRESENTS_E, -12},
-    {PRESENTS_S,  -4},
-    {PRESENTS_E,   4},
-    {PRESENTS_N,  12},
-    {PRESENTS_T,  20},
-    {PRESENTS_S,  28},
+    {
+        // Letter,   x offset
+        {PRESENTS_P, -28},
+        {PRESENTS_R, -20},
+        {PRESENTS_E, -12},
+        {PRESENTS_S, -4},
+        {PRESENTS_E, 4},
+        {PRESENTS_N, 12},
+        {PRESENTS_T, 20},
+        {PRESENTS_S, 28},
 };
 static const union AffineAnimCmd sAffineAnim_GameFreak_Small[] =
-{
-    AFFINEANIMCMD_FRAME(128, 128, 0, 0),
-    AFFINEANIMCMD_END,
+    {
+        AFFINEANIMCMD_FRAME(128, 128, 0, 0),
+        AFFINEANIMCMD_END,
 };
 static const union AffineAnimCmd sAffineAnim_GameFreak_GrowAndShrink[] =
-{
-    AFFINEANIMCMD_FRAME(128, 128, 0, 0),
-    AFFINEANIMCMD_FRAME(16, 16, 0, 16),
-    AFFINEANIMCMD_FRAME(-16, -16, 0, 8),
-    AFFINEANIMCMD_END,
+    {
+        AFFINEANIMCMD_FRAME(128, 128, 0, 0),
+        AFFINEANIMCMD_FRAME(16, 16, 0, 16),
+        AFFINEANIMCMD_FRAME(-16, -16, 0, 8),
+        AFFINEANIMCMD_END,
 };
 static const union AffineAnimCmd sAffineAnim_GameFreak_GrowBig[] =
-{
-    AFFINEANIMCMD_FRAME(256, 256, 0, 0),
-    AFFINEANIMCMD_FRAME(8, 8, 0, 48),
-    AFFINEANIMCMD_END,
+    {
+        AFFINEANIMCMD_FRAME(256, 256, 0, 0),
+        AFFINEANIMCMD_FRAME(8, 8, 0, 48),
+        AFFINEANIMCMD_END,
 };
 static const union AffineAnimCmd sAffineAnim_GameFreak_GrowMedium[] =
-{
-    AFFINEANIMCMD_FRAME(256, 256, 0, 0),
-    AFFINEANIMCMD_FRAME(2, 2, 0, 48),
-    AFFINEANIMCMD_END,
+    {
+        AFFINEANIMCMD_FRAME(256, 256, 0, 0),
+        AFFINEANIMCMD_FRAME(2, 2, 0, 48),
+        AFFINEANIMCMD_END,
 };
 static const union AffineAnimCmd *const sAffineAnims_GameFreak[] =
-{
-    sAffineAnim_GameFreak_Small,         // Initialize letters while still invisible
-    sAffineAnim_GameFreak_GrowAndShrink, // For letters appearing. Logo does this too, but while it's invisible
-    sAffineAnim_GameFreak_GrowBig,       // For letters disappearing
-    sAffineAnim_GameFreak_GrowMedium,    // For logo disappearing
+    {
+        sAffineAnim_GameFreak_Small,         // Initialize letters while still invisible
+        sAffineAnim_GameFreak_GrowAndShrink, // For letters appearing. Logo does this too, but while it's invisible
+        sAffineAnim_GameFreak_GrowBig,       // For letters disappearing
+        sAffineAnim_GameFreak_GrowMedium,    // For logo disappearing
 };
 static const u16 sGameFreakLettersMoveSpeed[NUM_GF_LETTERS] =
-{
-    256, // G
-    192, // A
-    128, // M
-     64, // E
-      0, // F
-     64, // R
-    128, // E
-    192, // A
-    256  // K
+    {
+        256, // G
+        192, // A
+        128, // M
+        64,  // E
+        0,   // F
+        64,  // R
+        128, // E
+        192, // A
+        256  // K
 };
 static const struct SpriteTemplate sSpriteTemplate_GameFreakLetter =
-{
-    .tileTag = GFXTAG_DROPS_LOGO,
-    .paletteTag = PALTAG_LOGO,
-    .oam = &sOamData_GameFreakLetter,
-    .anims = sAnims_GameFreakLetter,
-    .images = NULL,
-    .affineAnims = sAffineAnims_GameFreak,
-    .callback = SpriteCB_LogoLetter,
+    {
+        .tileTag = GFXTAG_DROPS_LOGO,
+        .paletteTag = PALTAG_LOGO,
+        .oam = &sOamData_GameFreakLetter,
+        .anims = sAnims_GameFreakLetter,
+        .images = NULL,
+        .affineAnims = sAffineAnims_GameFreak,
+        .callback = SpriteCB_LogoLetter,
 };
 // Unused
 static const struct SpriteTemplate sSpriteTemplate_PresentsLetter =
-{
-    .tileTag = GFXTAG_DROPS_LOGO,
-    .paletteTag = PALTAG_LOGO,
-    .oam = &sOamData_PresentsLetter,
-    .anims = sAnims_PresentsLetter,
-    .images = NULL,
-    .affineAnims = gDummySpriteAffineAnimTable,
-    .callback = SpriteCB_LogoLetter,
+    {
+        .tileTag = GFXTAG_DROPS_LOGO,
+        .paletteTag = PALTAG_LOGO,
+        .oam = &sOamData_PresentsLetter,
+        .anims = sAnims_PresentsLetter,
+        .images = NULL,
+        .affineAnims = gDummySpriteAffineAnimTable,
+        .callback = SpriteCB_LogoLetter,
 };
 static const struct SpriteTemplate sSpriteTemplate_GameFreakLogo =
-{
-    .tileTag = GFXTAG_DROPS_LOGO,
-    .paletteTag = PALTAG_LOGO,
-    .oam = &sOamData_GameFreakLogo,
-    .anims = sAnims_GameFreakLogo,
-    .images = NULL,
-    .affineAnims = sAffineAnims_GameFreak,
-    .callback = SpriteCB_GameFreakLogo,
+    {
+        .tileTag = GFXTAG_DROPS_LOGO,
+        .paletteTag = PALTAG_LOGO,
+        .oam = &sOamData_GameFreakLogo,
+        .anims = sAnims_GameFreakLogo,
+        .images = NULL,
+        .affineAnims = sAffineAnims_GameFreak,
+        .callback = SpriteCB_GameFreakLogo,
 };
 static const u8 sGameFreakLetterStartDelays[NUM_GF_LETTERS] =
-{
-    0,  // G
-    23, // A
-    23, // M
-    49, // E
-    62, // F
-    36, // R
-    36, // E
-    10, // A
-    10  // K
+    {
+        0,  // G
+        23, // A
+        23, // M
+        49, // E
+        62, // F
+        36, // R
+        36, // E
+        10, // A
+        10  // K
 };
 static const struct OamData sOamData_FlygonSilhouette =
-{
-    .y = DISPLAY_HEIGHT,
-    .affineMode = ST_OAM_AFFINE_OFF,
-    .objMode = ST_OAM_OBJ_NORMAL,
-    .mosaic = FALSE,
-    .bpp = ST_OAM_4BPP,
-    .shape = SPRITE_SHAPE(64x32),
-    .x = 0,
-    .matrixNum = 0,
-    .size = SPRITE_SIZE(64x32),
-    .tileNum = 0,
-    .priority = 0,
-    .paletteNum = 0,
-    .affineParam = 0,
+    {
+        .y = DISPLAY_HEIGHT,
+        .affineMode = ST_OAM_AFFINE_OFF,
+        .objMode = ST_OAM_OBJ_NORMAL,
+        .mosaic = FALSE,
+        .bpp = ST_OAM_4BPP,
+        .shape = SPRITE_SHAPE(64x32),
+        .x = 0,
+        .matrixNum = 0,
+        .size = SPRITE_SIZE(64x32),
+        .tileNum = 0,
+        .priority = 0,
+        .paletteNum = 0,
+        .affineParam = 0,
 };
 static const union AnimCmd sAnim_FlygonSilhouette[] =
-{
-    ANIMCMD_FRAME(0, 10),
-    ANIMCMD_JUMP(0),
+    {
+        ANIMCMD_FRAME(0, 10),
+        ANIMCMD_JUMP(0),
 };
 static const union AnimCmd *const sAnims_FlygonSilhouette[] =
-{
-    sAnim_FlygonSilhouette,
+    {
+        sAnim_FlygonSilhouette,
 };
 static const struct SpriteTemplate sSpriteTemplate_FlygonSilhouette =
-{
-    .tileTag = TAG_FLYGON_SILHOUETTE,
-    .paletteTag = TAG_FLYGON_SILHOUETTE,
-    .oam = &sOamData_FlygonSilhouette,
-    .anims = sAnims_FlygonSilhouette,
-    .images = NULL,
-    .affineAnims = gDummySpriteAffineAnimTable,
-    .callback = SpriteCB_FlygonSilhouette,
+    {
+        .tileTag = TAG_FLYGON_SILHOUETTE,
+        .paletteTag = TAG_FLYGON_SILHOUETTE,
+        .oam = &sOamData_FlygonSilhouette,
+        .anims = sAnims_FlygonSilhouette,
+        .images = NULL,
+        .affineAnims = gDummySpriteAffineAnimTable,
+        .callback = SpriteCB_FlygonSilhouette,
 };
 static const struct CompressedSpriteSheet sSpriteSheet_WaterDropsAndLogo[] =
-{
-    {sIntroDropsLogo_Gfx, 0x1400, GFXTAG_DROPS_LOGO},
-    {},
+    {
+        {sIntroDropsLogo_Gfx, 0x1400, GFXTAG_DROPS_LOGO},
+        {},
 };
 static const struct CompressedSpriteSheet sSpriteSheet_FlygonSilhouette[] =
-{
-    {gIntroFlygonSilhouette_Gfx, 0x400, TAG_FLYGON_SILHOUETTE},
-    {},
+    {
+        {gIntroFlygonSilhouette_Gfx, 0x400, TAG_FLYGON_SILHOUETTE},
+        {},
 };
 static const struct SpritePalette sSpritePalettes_Intro1[] =
-{
-    {sIntroDrops_Pal, PALTAG_DROPS},
-    {sIntroLogo_Pal, PALTAG_LOGO},
-    {sIntroFlygonSilhouette_Pal, TAG_FLYGON_SILHOUETTE},
-    {},
+    {
+        {sIntroDrops_Pal, PALTAG_DROPS},
+        {sIntroLogo_Pal, PALTAG_LOGO},
+        {sIntroFlygonSilhouette_Pal, TAG_FLYGON_SILHOUETTE},
+        {},
 };
 static const struct OamData sOamData_RayquazaOrb =
-{
-    .y = DISPLAY_HEIGHT,
-    .affineMode = ST_OAM_AFFINE_OFF,
-    .objMode = ST_OAM_OBJ_NORMAL,
-    .mosaic = FALSE,
-    .bpp = ST_OAM_4BPP,
-    .shape = SPRITE_SHAPE(64x64),
-    .x = 0,
-    .matrixNum = 0,
-    .size = SPRITE_SIZE(64x64),
-    .tileNum = 0,
-    .priority = 0,
-    .paletteNum = 0,
-    .affineParam = 0,
+    {
+        .y = DISPLAY_HEIGHT,
+        .affineMode = ST_OAM_AFFINE_OFF,
+        .objMode = ST_OAM_OBJ_NORMAL,
+        .mosaic = FALSE,
+        .bpp = ST_OAM_4BPP,
+        .shape = SPRITE_SHAPE(64x64),
+        .x = 0,
+        .matrixNum = 0,
+        .size = SPRITE_SIZE(64x64),
+        .tileNum = 0,
+        .priority = 0,
+        .paletteNum = 0,
+        .affineParam = 0,
 };
 static const union AnimCmd sAnim_RayquazaOrb[] =
-{
-    ANIMCMD_FRAME(16, 8),
-    ANIMCMD_END,
+    {
+        ANIMCMD_FRAME(16, 8),
+        ANIMCMD_END,
 };
 static const union AnimCmd *const sAnims_RayquazaOrb[] =
-{
-    sAnim_RayquazaOrb,
+    {
+        sAnim_RayquazaOrb,
 };
 static const struct SpriteTemplate sSpriteTemplate_RayquazaOrb =
-{
-    .tileTag = TAG_RAYQUAZA_ORB,
-    .paletteTag = TAG_RAYQUAZA_ORB,
-    .oam = &sOamData_RayquazaOrb,
-    .anims = sAnims_RayquazaOrb,
-    .images = NULL,
-    .affineAnims = gDummySpriteAffineAnimTable,
-    .callback = SpriteCB_RayquazaOrb,
+    {
+        .tileTag = TAG_RAYQUAZA_ORB,
+        .paletteTag = TAG_RAYQUAZA_ORB,
+        .oam = &sOamData_RayquazaOrb,
+        .anims = sAnims_RayquazaOrb,
+        .images = NULL,
+        .affineAnims = gDummySpriteAffineAnimTable,
+        .callback = SpriteCB_RayquazaOrb,
 };
 static const struct CompressedSpriteSheet sSpriteSheet_RayquazaOrb[] =
-{
-    {sIntroMisc_Gfx, 0xA00, TAG_RAYQUAZA_ORB},
-    {},
+    {
+        {sIntroMisc_Gfx, 0xA00, TAG_RAYQUAZA_ORB},
+        {},
 };
 static const struct SpritePalette sSpritePalette_RayquazaOrb[] =
-{
-    {sIntroRayquzaOrb_Pal, TAG_RAYQUAZA_ORB},
-    {},
+    {
+        {sIntroRayquzaOrb_Pal, TAG_RAYQUAZA_ORB},
+        {},
 };
-
 
 static void VBlankCB_Intro(void)
 {
@@ -1092,11 +1134,7 @@ static u8 SetUpCopyrightScreen(void)
         ResetSpriteData();
         FreeAllSpritePalettes();
         BeginNormalPaletteFade(PALETTES_ALL, 0, 16, 0, RGB_WHITEALPHA);
-        SetGpuReg(REG_OFFSET_BG0CNT, BGCNT_PRIORITY(0)
-                                   | BGCNT_CHARBASE(0)
-                                   | BGCNT_SCREENBASE(7)
-                                   | BGCNT_16COLOR
-                                   | BGCNT_TXT256x256);
+        SetGpuReg(REG_OFFSET_BG0CNT, BGCNT_PRIORITY(0) | BGCNT_CHARBASE(0) | BGCNT_SCREENBASE(7) | BGCNT_16COLOR | BGCNT_TXT256x256);
         EnableInterrupts(INTR_FLAG_VBLANK);
         SetVBlankCallback(VBlankCB_Intro);
         REG_DISPCNT = DISPCNT_MODE_0 | DISPCNT_OBJ_1D_MAP | DISPCNT_BG0_ON;
@@ -1200,7 +1238,7 @@ static void Task_Scene1_Load(u8 taskId)
     CpuCopy16(&gPlttBufferUnfaded[OBJ_PLTT_ID(0)], &gPlttBufferUnfaded[OBJ_PLTT_ID(12) + 3], PLTT_SIZEOF(16 - 3));
     CpuCopy16(&gPlttBufferUnfaded[OBJ_PLTT_ID(0)], &gPlttBufferUnfaded[OBJ_PLTT_ID(11) + 4], PLTT_SIZEOF(16 - 4));
     CpuCopy16(&gPlttBufferUnfaded[OBJ_PLTT_ID(0)], &gPlttBufferUnfaded[OBJ_PLTT_ID(10) + 5], PLTT_SIZEOF(16 - 5));
-    CpuCopy16(&gPlttBufferUnfaded[OBJ_PLTT_ID(0)], &gPlttBufferUnfaded[OBJ_PLTT_ID( 9) + 6], PLTT_SIZEOF(16 - 6));
+    CpuCopy16(&gPlttBufferUnfaded[OBJ_PLTT_ID(0)], &gPlttBufferUnfaded[OBJ_PLTT_ID(9) + 6], PLTT_SIZEOF(16 - 6));
     CreateGameFreakLogoSprites(DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2, 0);
     gTasks[taskId].sBigDropSpriteId = CreateWaterDrop(236, -14, 0x200, 1, 0x78, FALSE);
     gTasks[taskId].func = Task_Scene1_FadeIn;
@@ -1260,9 +1298,9 @@ static void Task_Scene1_WaterDrops(u8 taskId)
     }
 }
 
-#define tDelay       data[1]
-#define tTimer       data[2]
-#define tTimerSteps  data[3]
+#define tDelay data[1]
+#define tTimer data[2]
+#define tTimerSteps data[3]
 #define tNumSparkles data[4]
 
 static void Task_CreateSparkles(u8 taskId)
@@ -1367,10 +1405,10 @@ static void Task_Scene2_Load(u8 taskId)
     gTasks[taskId].func = Task_Scene2_CreateSprites;
 }
 
-#define tBgAnimTaskId   data[0]
+#define tBgAnimTaskId data[0]
 #define tPlayerSpriteId data[1]
 #define tFlygonSpriteId data[2]
-#define tFlygonTimer    data[3]
+#define tFlygonTimer data[3]
 
 static void Task_Scene2_CreateSprites(u8 taskId)
 {
@@ -1467,13 +1505,14 @@ static void Task_Scene2_End(u8 taskId)
 }
 
 #define sStateDelay data[1]
-#define sNextState  data[2]
-#define sCosYIdx    data[3]
-#define sSinXIdx    data[4]
-#define sSinYIdx    data[5]
-#define sFig8Loops  data[6]
+#define sNextState data[2]
+#define sCosYIdx data[3]
+#define sSinXIdx data[4]
+#define sSinYIdx data[5]
+#define sFig8Loops data[6]
 
-enum {
+enum
+{
     VOLBEAT_WAIT_ENTER,
     VOLBEAT_ENTER,
     VOLBEAT_ZIP_BACKWARD,
@@ -1580,7 +1619,7 @@ static void SpriteCB_Volbeat(struct Sprite *sprite)
 #undef sFig8Loops
 
 #define sMoveTimer data[1]
-#define sDelay     data[2]
+#define sDelay data[2]
 
 static void SpriteCB_Torchic(struct Sprite *sprite)
 {
@@ -1714,8 +1753,8 @@ static void SpriteCB_Manectric(struct Sprite *sprite)
 #undef sSinIdx
 #undef sCosIdx
 
-#define tAlpha        data[0]
-#define tZoomDiv      data[1]
+#define tAlpha data[0]
+#define tZoomDiv data[1]
 #define tZoomDivSpeed data[2]
 
 static void Task_Scene3_Load(u8 taskId)
@@ -1787,10 +1826,10 @@ static void Task_Scene3_LoadGroudon(u8 taskId)
     }
 }
 
-#define tWinPos  data[0]
+#define tWinPos data[0]
 #define tScreenX data[1]
 #define tScreenY data[2]
-#define tZoom    data[3]
+#define tZoom data[3]
 
 static void Task_Scene3_InitGroudonBg(u8 taskId)
 {
@@ -1798,23 +1837,9 @@ static void Task_Scene3_InitGroudonBg(u8 taskId)
     SetGpuReg(REG_OFFSET_WIN0V, DISPLAY_HEIGHT);
     SetGpuReg(REG_OFFSET_WININ, WININ_WIN0_ALL);
     SetGpuReg(REG_OFFSET_WINOUT, 0);
-    SetGpuReg(REG_OFFSET_BG2CNT, BGCNT_PRIORITY(0)
-                               | BGCNT_CHARBASE(0)
-                               | BGCNT_SCREENBASE(24)
-                               | BGCNT_256COLOR
-                               | BGCNT_WRAP
-                               | BGCNT_AFF512x512);
-    SetGpuReg(REG_OFFSET_BG1CNT, BGCNT_PRIORITY(1)
-                               | BGCNT_CHARBASE(1)
-                               | BGCNT_SCREENBASE(28)
-                               | BGCNT_16COLOR
-                               | BGCNT_TXT256x256);
-    SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_MODE_1
-                                | DISPCNT_OBJ_1D_MAP
-                                | DISPCNT_BG1_ON
-                                | DISPCNT_BG2_ON
-                                | DISPCNT_OBJ_ON
-                                | DISPCNT_WIN0_ON);
+    SetGpuReg(REG_OFFSET_BG2CNT, BGCNT_PRIORITY(0) | BGCNT_CHARBASE(0) | BGCNT_SCREENBASE(24) | BGCNT_256COLOR | BGCNT_WRAP | BGCNT_AFF512x512);
+    SetGpuReg(REG_OFFSET_BG1CNT, BGCNT_PRIORITY(1) | BGCNT_CHARBASE(1) | BGCNT_SCREENBASE(28) | BGCNT_16COLOR | BGCNT_TXT256x256);
+    SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_MODE_1 | DISPCNT_OBJ_1D_MAP | DISPCNT_BG1_ON | DISPCNT_BG2_ON | DISPCNT_OBJ_ON | DISPCNT_WIN0_ON);
     BeginNormalPaletteFade(PALETTES_ALL, 0, 16, 0, RGB_WHITEALPHA);
     gTasks[taskId].tWinPos = 0;
     gTasks[taskId].tScreenX = 0xFFA0;
@@ -1859,12 +1884,12 @@ static void Task_Scene3_StartGroudon(u8 taskId)
 
 #define tScreenX data[1]
 #define tScreenY data[2]
-#define tZoom    data[3]
-#define tYShake  data[4]
-#define tTimer   data[5]
-#define tDelay   data[6]
+#define tZoom data[3]
+#define tYShake data[4]
+#define tTimer data[5]
+#define tDelay data[6]
 #define tTrigIdx data[6] // Re-used
-#define tPalIdx  data[7]
+#define tPalIdx data[7]
 
 static void Task_Scene3_Groudon(u8 taskId)
 {
@@ -1982,8 +2007,8 @@ static void Task_Scene3_Groudon(u8 taskId)
 #undef tPalIdx
 
 #define sRockId data[1]
-#define sSpeed  data[2]
-#define sTimer  data[3]
+#define sSpeed data[2]
+#define sTimer data[3]
 #define sTaskId data[4]
 
 static void CreateGroudonRockSprites(u8 taskId)
@@ -2009,7 +2034,7 @@ static void SpriteCB_GroudonRocks(struct Sprite *sprite)
     if (sprite->sTimer % 2 == 0)
         sprite->y2 ^= 3;
 
-    switch(sprite->sState)
+    switch (sprite->sState)
     {
     case 0:
         // Rock floats up
@@ -2043,10 +2068,10 @@ static void SpriteCB_GroudonRocks(struct Sprite *sprite)
 
 #define tScreenX data[1]
 #define tScreenY data[2]
-#define tZoom    data[3]
-#define tDelay   data[6]
+#define tZoom data[3]
+#define tDelay data[6]
 #define tTrigIdx data[6] // Re-used
-#define tPalIdx  data[7]
+#define tPalIdx data[7]
 
 static void Task_Scene3_LoadKyogre(u8 taskId)
 {
@@ -2219,10 +2244,10 @@ static void Task_Scene3_Kyogre(u8 taskId)
 #undef tPalIdx
 
 #define sSinIdx data[1]
-#define sBaseY  data[2]
+#define sBaseY data[2]
 #define sTaskId data[5]
-#define sDelay  data[6]
-#define sUnk    data[7] // Never read
+#define sDelay data[6]
+#define sUnk data[7] // Never read
 
 // taskId is used inconsistently for these two functions.
 // The sprite callback for the bubbles will always read it, unless delay is 0 to
@@ -2274,7 +2299,7 @@ static void CreateKyogreBubbleSprites_Fins(void)
 
 static void SpriteCB_KyogreBubbles(struct Sprite *sprite)
 {
-    switch(sprite->sState)
+    switch (sprite->sState)
     {
     case 0:
         if (sprite->sDelay == 0)
@@ -2325,34 +2350,13 @@ static void SpriteCB_KyogreBubbles(struct Sprite *sprite)
 
 static void Task_Scene3_LoadClouds1(u8 taskId)
 {
-    SetGpuReg(REG_OFFSET_BLDCNT, BLDCNT_TGT1_BG0
-                               | BLDCNT_TGT1_BG1
-                               | BLDCNT_TGT1_BG2
-                               | BLDCNT_EFFECT_LIGHTEN);
+    SetGpuReg(REG_OFFSET_BLDCNT, BLDCNT_TGT1_BG0 | BLDCNT_TGT1_BG1 | BLDCNT_TGT1_BG2 | BLDCNT_EFFECT_LIGHTEN);
     SetGpuReg(REG_OFFSET_BLDALPHA, BLDALPHA_BLEND(31, 31));
     SetGpuReg(REG_OFFSET_BLDY, 31);
-    SetGpuReg(REG_OFFSET_BG0CNT, BGCNT_PRIORITY(0)
-                               | BGCNT_CHARBASE(0)
-                               | BGCNT_SCREENBASE(24)
-                               | BGCNT_16COLOR
-                               | BGCNT_TXT512x256);
-    SetGpuReg(REG_OFFSET_BG1CNT, BGCNT_PRIORITY(0)
-                               | BGCNT_CHARBASE(1)
-                               | BGCNT_SCREENBASE(26)
-                               | BGCNT_16COLOR
-                               | BGCNT_TXT512x256);
-    SetGpuReg(REG_OFFSET_BG2CNT, BGCNT_PRIORITY(2)
-                               | BGCNT_CHARBASE(1)
-                               | BGCNT_SCREENBASE(28)
-                               | BGCNT_16COLOR
-                               | BGCNT_TXT256x256);
-    SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_MODE_0
-                                | DISPCNT_OBJ_1D_MAP
-                                | DISPCNT_BG0_ON
-                                | DISPCNT_BG1_ON
-                                | DISPCNT_BG2_ON
-                                | DISPCNT_OBJ_ON
-                                | DISPCNT_WIN0_ON);
+    SetGpuReg(REG_OFFSET_BG0CNT, BGCNT_PRIORITY(0) | BGCNT_CHARBASE(0) | BGCNT_SCREENBASE(24) | BGCNT_16COLOR | BGCNT_TXT512x256);
+    SetGpuReg(REG_OFFSET_BG1CNT, BGCNT_PRIORITY(0) | BGCNT_CHARBASE(1) | BGCNT_SCREENBASE(26) | BGCNT_16COLOR | BGCNT_TXT512x256);
+    SetGpuReg(REG_OFFSET_BG2CNT, BGCNT_PRIORITY(2) | BGCNT_CHARBASE(1) | BGCNT_SCREENBASE(28) | BGCNT_16COLOR | BGCNT_TXT256x256);
+    SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_MODE_0 | DISPCNT_OBJ_1D_MAP | DISPCNT_BG0_ON | DISPCNT_BG1_ON | DISPCNT_BG2_ON | DISPCNT_OBJ_ON | DISPCNT_WIN0_ON);
     SetGpuReg(REG_OFFSET_BG0HOFS, 80);
     SetGpuReg(REG_OFFSET_BG0VOFS, 0);
     SetGpuReg(REG_OFFSET_BG1HOFS, -80);
@@ -2430,12 +2434,7 @@ static void Task_Scene3_LoadLightning(u8 taskId)
     LZDecompressVram(gIntroRayquazaClouds_Tilemap, (void *)(BG_CHAR_ADDR(3)));
     LZDecompressVram(gIntroRayquaza_Gfx, (void *)(BG_CHAR_ADDR(1)));
     LZDecompressVram(gIntroRayquazaClouds_Gfx, (void *)VRAM);
-    SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_MODE_0
-                                | DISPCNT_OBJ_1D_MAP
-                                | DISPCNT_BG0_ON
-                                | DISPCNT_BG2_ON
-                                | DISPCNT_OBJ_ON
-                                | DISPCNT_WIN0_ON);
+    SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_MODE_0 | DISPCNT_OBJ_1D_MAP | DISPCNT_BG0_ON | DISPCNT_BG2_ON | DISPCNT_OBJ_ON | DISPCNT_WIN0_ON);
     gTasks[taskId].func = Task_Scene3_Lightning;
     gTasks[taskId].tState = 0;
     gTasks[taskId].tDelay = 1;
@@ -2492,7 +2491,7 @@ static void SpriteCB_Lightning(struct Sprite *sprite)
     if (sprite->animEnded)
         sprite->invisible = TRUE;
 
-    switch(sprite->sState)
+    switch (sprite->sState)
     {
     case 0:
         sprite->sPalIdx = 0x1C2;
@@ -2529,12 +2528,7 @@ static void Task_Scene3_LoadRayquazaAttack(u8 taskId)
 
     LoadCompressedSpriteSheet(sSpriteSheet_RayquazaOrb);
     LoadSpritePalettes(sSpritePalette_RayquazaOrb);
-    SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_MODE_0
-                                | DISPCNT_OBJ_1D_MAP
-                                | DISPCNT_BG0_ON
-                                | DISPCNT_BG2_ON
-                                | DISPCNT_OBJ_ON
-                                | DISPCNT_WIN0_ON);
+    SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_MODE_0 | DISPCNT_OBJ_1D_MAP | DISPCNT_BG0_ON | DISPCNT_BG2_ON | DISPCNT_OBJ_ON | DISPCNT_WIN0_ON);
     gTasks[taskId].func = Task_Scene3_Rayquaza;
     BeginNormalPaletteFade(PALETTES_BG & ~(0x21), 0, 16, 0, RGB(9, 10, 10));
     gTasks[taskId].tState = 0;
@@ -2555,7 +2549,7 @@ static void Task_Scene3_Rayquaza(u8 taskId)
 
     tTimer++;
 
-    switch(tState)
+    switch (tState)
     {
     case 0:
         if ((tTimer & 1) != 0)
@@ -2607,7 +2601,7 @@ static void Task_RayquazaAttack(u8 taskId)
     s16 *data = gTasks[taskId].data;
     data[2]++;
 
-    switch(tState)
+    switch (tState)
     {
     case 0:
         if ((data[2] & 1) != 0)
@@ -2717,13 +2711,7 @@ static void Task_BlendLogoIn(u8 taskId)
     {
     case 0:
     default:
-        SetGpuReg(REG_OFFSET_BLDCNT, BLDCNT_EFFECT_BLEND
-                                   | BLDCNT_TGT2_BG0
-                                   | BLDCNT_TGT2_BG1
-                                   | BLDCNT_TGT2_BG2
-                                   | BLDCNT_TGT2_BG3
-                                   | BLDCNT_TGT2_OBJ
-                                   | BLDCNT_TGT2_BD);
+        SetGpuReg(REG_OFFSET_BLDCNT, BLDCNT_EFFECT_BLEND | BLDCNT_TGT2_BG0 | BLDCNT_TGT2_BG1 | BLDCNT_TGT2_BG2 | BLDCNT_TGT2_BG3 | BLDCNT_TGT2_OBJ | BLDCNT_TGT2_BD);
         SetGpuReg(REG_OFFSET_BLDALPHA, gTitleScreenAlphaBlend[31]);
         SetGpuReg(REG_OFFSET_BLDY, 0);
         gTasks[taskId].data[1] = ARRAY_COUNT(gTitleScreenAlphaBlend);
@@ -2760,13 +2748,7 @@ static void Task_BlendLogoOut(u8 taskId)
     {
     case 0:
     default:
-        SetGpuReg(REG_OFFSET_BLDCNT, BLDCNT_EFFECT_BLEND
-                                   | BLDCNT_TGT2_BG0
-                                   | BLDCNT_TGT2_BG1
-                                   | BLDCNT_TGT2_BG2
-                                   | BLDCNT_TGT2_BG3
-                                   | BLDCNT_TGT2_OBJ
-                                   | BLDCNT_TGT2_BD);
+        SetGpuReg(REG_OFFSET_BLDCNT, BLDCNT_EFFECT_BLEND | BLDCNT_TGT2_BG0 | BLDCNT_TGT2_BG1 | BLDCNT_TGT2_BG2 | BLDCNT_TGT2_BG3 | BLDCNT_TGT2_OBJ | BLDCNT_TGT2_BD);
         SetGpuReg(REG_OFFSET_BLDALPHA, gTitleScreenAlphaBlend[0]);
         SetGpuReg(REG_OFFSET_BLDY, 0);
         gTasks[taskId].data[1] = 0;
@@ -3161,10 +3143,10 @@ static void SpriteCB_Flygon(struct Sprite *sprite)
 
 #undef sSinIdx
 
-#define sTimer      data[1]
-#define sLetterId   data[2]
+#define sTimer data[1]
+#define sLetterId data[2]
 #define sColorDelay data[3]
-#define sLetterX    data[3] // Re-used
+#define sLetterX data[3] // Re-used
 
 #define COLOR_CHANGES 9 // Number of stages for changing the letter color
 
@@ -3203,14 +3185,14 @@ static void SpriteCB_LogoLetter(struct Sprite *sprite)
             sprite->sColorDelay = 2;
             if (sprite->sTimer != 0)
             {
-                CpuCopy16(&gIntroGameFreakTextFade_Pal[sprite->sTimer],      &gPlttBufferFaded[OBJ_PLTT_ID(1) + 15], PLTT_SIZEOF(1));
+                CpuCopy16(&gIntroGameFreakTextFade_Pal[sprite->sTimer], &gPlttBufferFaded[OBJ_PLTT_ID(1) + 15], PLTT_SIZEOF(1));
                 CpuCopy16(&gIntroGameFreakTextFade_Pal[sprite->sTimer + 16], &gPlttBufferFaded[OBJ_PLTT_ID(1) + 4], PLTT_SIZEOF(1));
                 CpuCopy16(&gIntroGameFreakTextFade_Pal[sprite->sTimer + 32], &gPlttBufferFaded[OBJ_PLTT_ID(1) + 10], PLTT_SIZEOF(1));
                 sprite->sTimer--;
             }
             else
             {
-                CpuCopy16(&gIntroGameFreakTextFade_Pal[sprite->sTimer],      &gPlttBufferFaded[OBJ_PLTT_ID(1) + 15], PLTT_SIZEOF(1));
+                CpuCopy16(&gIntroGameFreakTextFade_Pal[sprite->sTimer], &gPlttBufferFaded[OBJ_PLTT_ID(1) + 15], PLTT_SIZEOF(1));
                 CpuCopy16(&gIntroGameFreakTextFade_Pal[sprite->sTimer + 16], &gPlttBufferFaded[OBJ_PLTT_ID(1) + 4], PLTT_SIZEOF(1));
                 CpuCopy16(&gIntroGameFreakTextFade_Pal[sprite->sTimer + 32], &gPlttBufferFaded[OBJ_PLTT_ID(1) + 10], PLTT_SIZEOF(1));
                 sprite->sState++;
@@ -3232,7 +3214,7 @@ static void SpriteCB_LogoLetter(struct Sprite *sprite)
             sprite->sColorDelay = 2;
             if (sprite->sTimer <= COLOR_CHANGES)
             {
-                CpuCopy16(&gIntroGameFreakTextFade_Pal[sprite->sTimer],      &gPlttBufferFaded[OBJ_PLTT_ID(1) + 15], PLTT_SIZEOF(1));
+                CpuCopy16(&gIntroGameFreakTextFade_Pal[sprite->sTimer], &gPlttBufferFaded[OBJ_PLTT_ID(1) + 15], PLTT_SIZEOF(1));
                 CpuCopy16(&gIntroGameFreakTextFade_Pal[sprite->sTimer + 16], &gPlttBufferFaded[OBJ_PLTT_ID(1) + 4], PLTT_SIZEOF(1));
                 CpuCopy16(&gIntroGameFreakTextFade_Pal[sprite->sTimer + 32], &gPlttBufferFaded[OBJ_PLTT_ID(1) + 10], PLTT_SIZEOF(1));
                 sprite->sTimer++;
@@ -3270,7 +3252,7 @@ static void SpriteCB_LogoLetter(struct Sprite *sprite)
 
 static void SpriteCB_GameFreakLogo(struct Sprite *sprite)
 {
-    switch(sprite->sState)
+    switch (sprite->sState)
     {
     case 0:
         if (gIntroFrameCounter == TIMER_LOGO_APPEAR)
@@ -3328,10 +3310,10 @@ static u8 CreateGameFreakLogoSprites(s16 x, s16 y, s16 unused)
 #undef sLetterX
 #undef COLOR_CHANGES
 
-#define sScale   data[1]
-#define sRot     data[2]
-#define sPos     data[3]
-#define sTimer   data[7]
+#define sScale data[1]
+#define sRot data[2]
+#define sPos data[3]
+#define sTimer data[7]
 
 static void SpriteCB_FlygonSilhouette(struct Sprite *sprite)
 {
@@ -3347,10 +3329,10 @@ static void SpriteCB_FlygonSilhouette(struct Sprite *sprite)
         sin = gSineTable[(u8)sprite->sRot];
         cos = gSineTable[(u8)(sprite->sRot + 64)];
         // Converts rotation and scale into the OAM matrix
-        d = Q_8_8_TO_INT( cos * sprite->sScale);
+        d = Q_8_8_TO_INT(cos * sprite->sScale);
         c = Q_8_8_TO_INT(-sin * sprite->sScale);
-        b = Q_8_8_TO_INT( sin * sprite->sScale);
-        a = Q_8_8_TO_INT( cos * sprite->sScale);
+        b = Q_8_8_TO_INT(sin * sprite->sScale);
+        a = Q_8_8_TO_INT(cos * sprite->sScale);
 
         SetOamMatrix(1, a, b, c, d);
     }
@@ -3412,7 +3394,7 @@ static void SpriteCB_RayquazaOrb(struct Sprite *sprite)
         CalcCenterToCornerVec(sprite, SPRITE_SHAPE(64x64), SPRITE_SIZE(64x64), ST_OAM_AFFINE_DOUBLE);
         sprite->data[1] = 0;
         sprite->sState = 1;
-        //fall through
+        // fall through
     case 1:
         sprite->data[7]++;
         if (sprite->data[7] & 1)

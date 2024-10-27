@@ -3854,7 +3854,7 @@ extern const u32 gItemIconPalette_OldSeaMap[];
 extern const u32 gItemIcon_ReturnToFieldArrow[];
 extern const u32 gItemIconPalette_ReturnToFieldArrow[];
 
-//menu graphics
+// menu graphics
 extern const u16 gMenuInfoElements1_Pal[16];
 extern const u16 gMenuInfoElements2_Pal[16];
 extern const u16 gMenuInfoElements3_Pal[16];
@@ -3873,7 +3873,7 @@ extern const u32 gBagFemaleTiles[];
 extern const u32 gBagPalette[];
 extern const u32 gBerryCheckCircle_Gfx[];
 
-//intro graphics
+// intro graphics
 extern const u32 gIntroSparkle_Gfx[];
 extern const u32 gIntroFlygonSilhouette_Gfx[];
 extern const u32 gIntroLightning_Gfx[];
@@ -4005,7 +4005,7 @@ extern const u32 gBerryPalette_Starf[];
 extern const u32 gBerryPic_Enigma[];
 extern const u32 gBerryPalette_Enigma[];
 
-//PokéNav
+// PokéNav
 extern const u16 gPokenavCondition_Pal[];
 extern const u32 gPokenavCondition_Gfx[];
 extern const u32 gPokenavCondition_Tilemap[];
@@ -4111,12 +4111,12 @@ extern const u16 gBattlePyramidFloor_Pal[][16];
 
 extern const u16 gStandardMenuPalette[];
 
-extern const u32 gTitleScreenEmeraldVersionGfx[];
+// extern const u32 gTitleScreenEmeraldVersionGfx[];
 extern const u32 gTitleScreenPressStartGfx[];
-extern const u32 gTitleScreenPokemonLogoGfx[];
-extern const u32 gTitleScreenPokemonLogoTilemap[];
-extern const u32 gTitleScreenCloudsTilemap[];
-extern const u16 gTitleScreenBgPalettes[];
+// extern const u32 gTitleScreenPokemonLogoGfx[];
+// extern const u32 gTitleScreenPokemonLogoTilemap[];
+// extern const u32 gTitleScreenCloudsTilemap[];
+// extern const u16 gTitleScreenBgPalettes[];
 extern const u16 gTitleScreenPressStartPal[];
 extern const u16 gTitleScreenEmeraldVersionPal[];
 
@@ -4294,7 +4294,7 @@ extern const u32 gBattleAnimSpriteGfx_IceSpikes[];
 extern const u32 gBattleAnimSpriteGfx_HandsAndFeet[];
 extern const u32 gBattleAnimSpriteGfx_MistCloud[];
 extern const u32 gBattleAnimSpriteGfx_Clamp[];
-//extern const struct CompressedSpriteSheet gBattleAnimSpriteGfx_146[];
+// extern const struct CompressedSpriteSheet gBattleAnimSpriteGfx_146[];
 extern const u32 gBattleAnimSpriteGfx_Bubble[];
 extern const u32 gBattleAnimSpriteGfx_Orbs[];
 extern const u32 gBattleAnimSpriteGfx_WaterImpact[];
@@ -5070,4 +5070,4 @@ extern const u8 gMailTilemap_Retro[];
 extern const u8 gMonMarkingsMenu_Gfx[];
 extern const u16 gMonMarkingsMenu_Pal[];
 
-#endif //GUARD_GRAPHICS_H
+#endif // GUARD_GRAPHICS_H
