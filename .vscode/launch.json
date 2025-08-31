@@ -1,0 +1,23 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Attach to mGBA",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/pokeemerald_modern.elf",
+            "stopAtEntry": true,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "miDebuggerServerAddress": "localhost:2345",
+            "debugServerArgs": "${workspaceFolder}/pokeemerald_modern.elf",
+            "serverStarted": "started-mgba-server",
+            "linux": {
+                "MIMode": "gdb",
+                "miDebuggerPath": "/usr/bin/arm-none-eabi-gdb",
+                "debugServerPath": "${workspaceFolder}/.vscode/mgba-gdb.sh"
+            }
+        }
+    ]
+}
