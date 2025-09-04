@@ -24,7 +24,7 @@
 #include "minigame_ship.h"
 
 // Al inicio del archivo, podemos agregar defines para la posición
-#define PRESS_START_X 136 // Posición X central
+#define PRESS_START_X 86 // Posición X central
 #define PRESS_START_Y 114 // Posición Y
 
 #define NUM_PRESS_START_FRAMES 5
@@ -561,7 +561,7 @@ static void SetMainTitleScreen(void)
     ShowBg(0); // Logo (front)
 
     // Position logo if needed
-    ChangeBgX(0, -55 * 256, BG_COORD_SET);
+    ChangeBgX(0, -4 * 256, BG_COORD_SET);
     ChangeBgY(0, -46 * 256, BG_COORD_SET);
 
     // Set up blending for clouds and logo
