@@ -8,16 +8,19 @@
             "program": "${workspaceFolder}/pokeemerald_modern.elf",
             "stopAtEntry": true,
             "cwd": "${workspaceFolder}",
-            "environment": [],
+            "environment": [
+                {
+                    "name": "MGBA_EXECUTABLE",
+                    "value": "/usr/bin/mgba-qt"
+                }
+            ],
             "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "/usr/bin/arm-none-eabi-gdb",
             "miDebuggerServerAddress": "localhost:2345",
+            "debugServerPath": "${workspaceFolder}/.vscode/mgba-gdb.sh",
             "debugServerArgs": "${workspaceFolder}/pokeemerald_modern.elf",
-            "serverStarted": "started-mgba-server",
-            "linux": {
-                "MIMode": "gdb",
-                "miDebuggerPath": "/usr/bin/arm-none-eabi-gdb",
-                "debugServerPath": "${workspaceFolder}/.vscode/mgba-gdb.sh"
-            }
+            "serverStarted": "started-mgba-server"
         }
     ]
 }
