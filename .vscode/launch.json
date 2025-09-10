@@ -2,11 +2,12 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Attach to mGBA",
+            "name": "Debug with mGBA",
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/pokeemerald_modern.elf",
-            "stopAtEntry": true,
+            "args": [],
+            "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [
                 {
@@ -20,7 +21,22 @@
             "miDebuggerServerAddress": "localhost:2345",
             "debugServerPath": "${workspaceFolder}/.vscode/mgba-gdb.sh",
             "debugServerArgs": "${workspaceFolder}/pokeemerald_modern.elf",
-            "serverStarted": "started-mgba-server"
+            "serverStarted": "started-mgba-server",
+            "serverLaunchTimeout": 20000,
+            "preLaunchTask": "build_modern",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "logging": {
+                "engineLogging": true,
+                "moduleLoad": false,
+                "programOutput": true,
+                "trace": false
+            }
         }
     ]
 }

@@ -2,8 +2,12 @@
 #define GUARD_MINIGAME_SHIP_H
 
 #include "global.h"
+#include "minigame_pre.h"
 
-// Constantes públicas para el minijuego
+// Compatibilidad con el sistema anterior - redirige al pre-minijuego
+#define CB2_InitMinigameShip CB2_InitPreMinigame
+
+// Constantes públicas para el minijuego (compatibilidad)
 #define MINIGAME_SHIP_BG_WIDTH 256
 #define MINIGAME_SHIP_BG_HEIGHT 256
 
@@ -15,9 +19,6 @@ enum MinigameShipState
     MINIGAME_STATE_GAMEPLAY,
     MINIGAME_STATE_EXIT
 };
-
-// Callbacks principales
-void CB2_InitMinigameShip(void);
 
 // Funciones auxiliares que podrían ser útiles para otros archivos
 void MinigameShip_StopAllEffects(void);

@@ -2,6 +2,19 @@
     "files.associations": {
         "*.rmd": "markdown",
         "minigame_ship.h": "c",
-        "title_screen.h": "c"
+        "title_screen.h": "c",
+        "m4a_internal.h": "c",
+        "global.h": "c",
+        "rgb.h": "c",
+        "minigame_countdown.h": "c",
+        "minigame_pre.h": "c",
+        "minigame_spaceship.h": "c",
+        "libgcnmultiboot.h": "c",
+        "sprite.h": "c",
+        "link.h": "c",
+        "menu.h": "c",
+        "bg.h": "c",
+        "overworld.h": "c",
+        "main_menu.h": "c"
     }
 }

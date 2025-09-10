@@ -23,11 +23,15 @@
 #include "constants/rgb.h"
 #include "constants/songs.h"
 #include "constants/characters.h"
+#include "minigame_spaceship.h"
+#include "minigame_pre.h"
+#include <string.h>
 
 #define WIN_STORY 0
 #define FONT_WHITE 0
-#define BASE_BLOCK 0x200 // Aumentado para evitar corrupción
+#define BASE_BLOCK 0x200
 
+// Gráficos del boy para la escena pre-minijuego
 static const u32 gPreGameBackgroundGfx[] = INCBIN_U32("graphics/minigame_spaceship/boy.4bpp.lz");
 static const u32 gPreGameBackgroundTilemap[] = INCBIN_U32("graphics/minigame_spaceship/boy.bin.lz");
 static const u16 gPreGameBackgroundPal[] = INCBIN_U16("graphics/minigame_spaceship/boy.gbapal");
@@ -38,14 +42,14 @@ typedef struct
     bool8 isTextPrinting;
     u16 textSpeed;
     u8 fadeState;
-} MinigameState;
+} PreMinigameState;
 
-static EWRAM_DATA MinigameState *sMinigameState = NULL;
+static EWRAM_DATA PreMinigameState *sPreMinigameState = NULL;
 
-static void Task_HandleStorySequence(u8 taskId);
-static void Task_closeMsgBox(u8 taskId);
+static void Task_HandlePreStorySequence(u8 taskId);
+static void Task_TransitionToMainGame(u8 taskId);
 
-static const struct BgTemplate sMinigameBgTemplates[] = {
+static const struct BgTemplate sPreMinigameBgTemplates[] = {
     {.bg = 0,
      .charBaseIndex = 2,
      .mapBaseIndex = 31,
@@ -59,19 +63,21 @@ static const struct BgTemplate sMinigameBgTemplates[] = {
      .screenSize = 0,
      .paletteMode = 0,
      .priority = 0,
-     .baseTile = 0}};
+     .baseTile = 0}
+};
 
-static const struct WindowTemplate sStoryTextWindowTemplate[] = {
+static const struct WindowTemplate sPreStoryTextWindowTemplate[] = {
     [WIN_STORY] = {
         .bg = 1,
-        .tilemapLeft = 2, // Moved slightly right for better margin
-        .tilemapTop = 13, // Moved up to give more vertical space
-        .width = 26,      // Maintained width for readability
-        .height = 6,      // Increased height to allow more lines
+        .tilemapLeft = 2,
+        .tilemapTop = 13,
+        .width = 26,
+        .height = 6,
         .paletteNum = 15,
         .baseBlock = BASE_BLOCK,
     },
 };
+
 static const u8 sText_Train[] = _("La pantalla de la consola portatil\n"
                                   "se ilumino en la oscuridad del\n"
                                   "compartimento del tren.\p");
@@ -80,21 +86,26 @@ static const u8 sText_Boy[] = _("Un joven, con el rostro parcialmente\n"
                                 "oculto por la capucha de su chaqueta,\n"
                                 "sostenia el dispositivo con firmeza.\p");
 
-static const u8 *const sStoryText[] = {
+static const u8 sText_Preparation[] = _("Era hora de prepararse para\n"
+                                        "la mision más importante\n"
+                                        "de su vida...\p");
+
+static const u8 *const sPreStoryText[] = {
     sText_Train,
     sText_Boy,
+    sText_Preparation,
 };
 
-#define STORY_TEXT_COUNT (sizeof(sStoryText) / sizeof(sStoryText[0]))
+#define PRE_STORY_TEXT_COUNT (sizeof(sPreStoryText) / sizeof(sPreStoryText[0]))
 
-static void VBlankCB_Minigame(void)
+static void VBlankCB_PreMinigame(void)
 {
     LoadOam();
     ProcessSpriteCopyRequests();
     TransferPlttBuffer();
 }
 
-static void CB2_MinigameMain(void)
+static void CB2_PreMinigameMain(void)
 {
     RunTasks();
     AnimateSprites();
@@ -120,18 +131,15 @@ static void ResetGPURegisters(void)
 
 void AddTransparentTextPrinter(bool8 allowSkippingDelayWithButtonPress)
 {
-    void (*callback)(struct TextPrinterTemplate *, u16) = NULL;
     gTextFlags.canABSpeedUpPrint = allowSkippingDelayWithButtonPress;
-    // Cambiado último parámetro a 0 para fondo transparente
-    // u16 AddTextPrinterParameterized2(u8 windowId, u8 fontId, const u8 *str, u8 speed, void (*callback)(struct TextPrinterTemplate *, u16), u8 fgColor, u8 bgColor, u8 shadowColor)
-    // ok vamos a hacer un efecto transparente con
-    AddTextPrinterParameterized2(WIN_STORY, FONT_NORMAL, gStringVar4, GetPlayerTextSpeedDelay(), callback, TEXT_COLOR_WHITE, TEXT_COLOR_TRANSPARENT, TEXT_COLOR_DARK_GRAY);
+    // La función correcta es: AddTextPrinterParameterized(windowId, fontId, str, x, y, speed, callback)
+    AddTextPrinterParameterized(WIN_STORY, FONT_NORMAL, gStringVar4, 0, 0, 0, NULL);
 }
 
 static void SetupGraphicsAndWindows(void)
 {
     // Inicializar BGs
-    InitBgsFromTemplates(0, sMinigameBgTemplates, ARRAY_COUNT(sMinigameBgTemplates));
+    InitBgsFromTemplates(0, sPreMinigameBgTemplates, ARRAY_COUNT(sPreMinigameBgTemplates));
     SetBgTilemapBuffer(0, AllocZeroed(BG_SCREEN_SIZE));
     SetBgTilemapBuffer(1, AllocZeroed(BG_SCREEN_SIZE));
 
@@ -141,7 +149,7 @@ static void SetupGraphicsAndWindows(void)
     LoadPalette(gPreGameBackgroundPal, BG_PLTT_ID(11), PLTT_SIZE_4BPP);
 
     // Configurar sistema de texto
-    InitWindows(sStoryTextWindowTemplate);
+    InitWindows(sPreStoryTextWindowTemplate);
     DeactivateAllTextPrinters();
     LoadPalette(GetOverworldTextboxPalettePtr(), BG_PLTT_ID(15), PLTT_SIZE_4BPP);
 
@@ -162,31 +170,31 @@ static void AddTextToWindow(const u8 *text)
     CopyWindowToVram(WIN_STORY, COPYWIN_FULL);
 }
 
-static void Task_HandleStorySequence(u8 taskId)
+static void Task_HandlePreStorySequence(u8 taskId)
 {
     switch (gTasks[taskId].data[0])
     {
     case 0:
         if (!gPaletteFade.active)
         {
-            AddTextToWindow(sStoryText[0]);
+            AddTextToWindow(sPreStoryText[0]);
             gTasks[taskId].data[0]++;
         }
         break;
 
     case 1:
-        if (!RunTextPrintersAndIsPrinter0Active() &&
+        if (!IsTextPrinterActive(WIN_STORY) &&
             (JOY_NEW(A_BUTTON) || JOY_NEW(B_BUTTON)))
         {
-            sMinigameState->currentTextLine++;
-            if (sMinigameState->currentTextLine >= STORY_TEXT_COUNT)
+            sPreMinigameState->currentTextLine++;
+            if (sPreMinigameState->currentTextLine >= PRE_STORY_TEXT_COUNT)
             {
                 BeginNormalPaletteFade(PALETTES_ALL, 0, 0, 16, RGB_BLACK);
                 gTasks[taskId].data[0] = 2;
             }
             else
             {
-                AddTextToWindow(sStoryText[sMinigameState->currentTextLine]);
+                AddTextToWindow(sPreStoryText[sPreMinigameState->currentTextLine]);
             }
         }
         break;
@@ -194,25 +202,24 @@ static void Task_HandleStorySequence(u8 taskId)
     case 2:
         if (!gPaletteFade.active)
         {
-            ClearDialogWindowAndFrame(WIN_STORY, TRUE);
+            RemoveWindow(WIN_STORY);
             FreeAllWindowBuffers();
-            FREE_AND_SET_NULL(sMinigameState);
+            FREE_AND_SET_NULL(sPreMinigameState);
             DestroyTask(taskId);
+            CreateTask(Task_TransitionToMainGame, 0);
         }
         break;
     }
 }
 
-static void Task_closeMsgBox(u8 taskId)
+static void Task_TransitionToMainGame(u8 taskId)
 {
-    if (!RunTextPrintersAndIsPrinter0Active())
-    {
-        ClearDialogWindowAndFrame(WIN_STORY, TRUE);
-        FreeAllWindowBuffers();
-    }
+    // Transición directa al minijuego principal
+    SetMainCallback2(CB2_InitMinigameSpaceship);
+    DestroyTask(taskId);
 }
 
-void CB2_InitMinigameShip(void)
+void CB2_InitPreMinigame(void)
 {
     switch (gMain.state)
     {
@@ -231,7 +238,11 @@ void CB2_InitMinigameShip(void)
         DmaFill16(3, 0, (void *)PLTT, PLTT_SIZE);
 
         // Inicializar estado
-        sMinigameState = AllocZeroed(sizeof(MinigameState));
+        sPreMinigameState = Alloc(sizeof(PreMinigameState));
+        if (sPreMinigameState != NULL)
+        {
+            memset(sPreMinigameState, 0, sizeof(PreMinigameState));
+        }
         gMain.state++;
         break;
 
@@ -241,9 +252,9 @@ void CB2_InitMinigameShip(void)
         BeginNormalPaletteFade(PALETTES_ALL, 0, 16, 0, RGB_BLACK);
 
         // Configurar callbacks
-        SetVBlankCallback(VBlankCB_Minigame);
-        CreateTask(Task_HandleStorySequence, 0);
-        SetMainCallback2(CB2_MinigameMain);
+        SetVBlankCallback(VBlankCB_PreMinigame);
+        CreateTask(Task_HandlePreStorySequence, 0);
+        SetMainCallback2(CB2_PreMinigameMain);
 
         PlayBGM(MUS_INTRO);
         gMain.state = 0;
