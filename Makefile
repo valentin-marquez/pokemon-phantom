@@ -115,7 +115,7 @@ INCLUDE_SCANINC_ARGS := $(INCLUDE_DIRS:%=-I %)
 O_LEVEL ?= 2
 CPPFLAGS := $(INCLUDE_CPP_ARGS) -Wno-trigraphs -DMODERN=$(MODERN)
 ifeq ($(MODERN),0)
-  CPPFLAGS += -I tools/agbcc/include -I tools/agbcc -nostdinc -undef
+  CPPFLAGS += -I tools/agbcc/include -I tools/agbcc -nostdinc -undef -std=gnu89
   CC1 := tools/agbcc/bin/agbcc$(EXE)
   override CFLAGS += -mthumb-interwork -Wimplicit -Wparentheses -Werror -O$(O_LEVEL) -fhex-asm -g
   LIBPATH := -L ../../tools/agbcc/lib
@@ -266,6 +266,8 @@ include audio_rules.mk
 # NOTE: Tools must have been built prior (FIXME)
 # so you can't really call this rule directly
 generated: $(AUTO_GEN_TARGETS)
+	@: # Silence the "Nothing to be done for `generated'" message, which some people were confusing for an error.
+
 
 %.s:   ;
 %.png: ;
@@ -281,7 +283,8 @@ generated: $(AUTO_GEN_TARGETS)
 %.rl:     %      ; $(GFX) $< $@
 
 clean-generated:
-	-rm -f $(AUTO_GEN_TARGETS)
+	@rm -f $(AUTO_GEN_TARGETS)
+	@echo "rm -f <AUTO_GEN_TARGETS>"
 
 ifeq ($(MODERN),0)
 $(C_BUILDDIR)/libc.o: CC1 := $(TOOLS_DIR)/agbcc/bin/old_agbcc$(EXE)
@@ -310,10 +313,10 @@ ifneq ($(KEEP_TEMPS),1)
 	@echo "$(CC1) <flags> -o $@ $<"
 	@$(CPP) $(CPPFLAGS) $< | $(PREPROC) -i $< charmap.txt | $(CC1) $(CFLAGS) -o - - | cat - <(echo -e ".text\n\t.align\t2, 0") | $(AS) $(ASFLAGS) -o $@ -
 else
-	@$(CPP) $(CPPFLAGS) $< -o $*.i
-	@$(PREPROC) $*.i charmap.txt | $(CC1) $(CFLAGS) -o $*.s
-	@echo -e ".text\n\t.align\t2, 0\n" >> $*.s
-	$(AS) $(ASFLAGS) -o $@ $*.s
+	@$(CPP) $(CPPFLAGS) $< -o $(C_BUILDDIR)/$*.i
+	@$(PREPROC) $(C_BUILDDIR)/$*.i charmap.txt | $(CC1) $(CFLAGS) -o $(C_BUILDDIR)/$*.s
+	@echo -e ".text\n\t.align\t2, 0\n" >> $(C_BUILDDIR)/$*.s
+	$(AS) $(ASFLAGS) -o $@ $(C_BUILDDIR)/$*.s
 endif
 
 $(C_BUILDDIR)/%.d: $(C_SUBDIR)/%.c
@@ -377,6 +380,7 @@ libagbsyscall:
 	@$(MAKE) -C libagbsyscall TOOLCHAIN=$(TOOLCHAIN) MODERN=$(MODERN)
 
 # Elf from object files
+LDFLAGS = -Map ../../$(MAP)
 $(ELF): $(LD_SCRIPT) $(LD_SCRIPT_DEPS) $(OBJS) libagbsyscall
 	@cd $(OBJ_DIR) && $(LD) $(LDFLAGS) -T ../../$< --print-memory-usage -o ../../$@ $(OBJS_REL) $(LIB) | cat
 	@echo "cd $(OBJ_DIR) && $(LD) $(LDFLAGS) -T ../../$< --print-memory-usage -o ../../$@ <objs> <libs> | cat"
