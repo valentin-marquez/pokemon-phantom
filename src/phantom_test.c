@@ -9,6 +9,7 @@
 #include "save.h"
 #include "event_data.h"
 #include "constants/phantom.h"
+#include "start_menu.h"
 
 u8 gPhantomTestFailed = 0;
 
@@ -51,6 +52,12 @@ static void Test_PhantomTimeInit(void)
     PHANTOM_ASSERT(VarGet(VAR_PHANTOM_TIME) == PHANTOM_TIME_PROLOGUE, "phantom-time-prologue");
 }
 
+// Test 3 (Task 6): el guardado es diegético; SAVE no aparece en el start menu.
+static void Test_NoSaveInStartMenu(void)
+{
+    PHANTOM_ASSERT(PhantomTest_StartMenuHasSave() == FALSE, "no-save-in-startmenu");
+}
+
 void PhantomTest_Run(void)
 {
     PHANTOM_CHECKPOINT("suite-start");
@@ -61,6 +68,7 @@ void PhantomTest_Run(void)
     Test_NewGameProtagonist();
     PHANTOM_CHECKPOINT("after-newgame");
     Test_PhantomTimeInit();
+    Test_NoSaveInStartMenu();
     PHANTOM_CHECKPOINT("suite-end");
     PhantomTest_Finish(gPhantomTestFailed);
 }

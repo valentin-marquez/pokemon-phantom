@@ -13,4 +13,8 @@ void SaveForBattleTowerLink(void);
 void HideStartMenu(void);
 void AppendToList(u8 *list, u8 *pos, u8 newEntry);
 
+#ifdef PHANTOM_TEST
+bool8 PhantomTest_StartMenuHasSave(void);
+#endif
+
 #endif // GUARD_START_MENU_H

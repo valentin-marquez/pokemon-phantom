@@ -331,7 +331,8 @@ static void BuildNormalStartMenu(void)
     }
 
     AddStartMenuAction(MENU_ACTION_PLAYER);
-    AddStartMenuAction(MENU_ACTION_SAVE);
+    // Pokémon Phantom: sin guardado desde el menú; solo diegético (camas/altar).
+    // AddStartMenuAction(MENU_ACTION_SAVE);
     AddStartMenuAction(MENU_ACTION_OPTION);
     AddStartMenuAction(MENU_ACTION_EXIT);
 }
@@ -1437,3 +1438,15 @@ void AppendToList(u8 *list, u8 *pos, u8 newEntry)
     list[*pos] = newEntry;
     (*pos)++;
 }
+
+#ifdef PHANTOM_TEST
+bool8 PhantomTest_StartMenuHasSave(void)
+{
+    u32 i;
+    BuildStartMenuActions();
+    for (i = 0; i < sNumStartMenuActions; i++)
+        if (sCurrentStartMenuActions[i] == MENU_ACTION_SAVE)
+            return TRUE;
+    return FALSE;
+}
+#endif
