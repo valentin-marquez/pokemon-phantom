@@ -43,8 +43,8 @@
 #define TEMP_FLAGS_END   FLAG_TEMP_1F
 #define NUM_TEMP_FLAGS   (TEMP_FLAGS_END - TEMP_FLAGS_START + 1)
 
-#define FLAG_UNUSED_0x020    0x20 // Unused Flag
-#define FLAG_UNUSED_0x021    0x21 // Unused Flag
+#define FLAG_PHANTOM_MEOWTH_EXECUTED    0x20 // Pokémon Phantom: se ejecutó a Meowth (enciende la desaturación permanente, Fase 5)
+#define FLAG_PHANTOM_SAW_EXECUTION    0x21 // Pokémon Phantom: el jugador presenció la ejecución (swap de NPCs intra-día, Fase 2)
 #define FLAG_UNUSED_0x022    0x22 // Unused Flag
 #define FLAG_UNUSED_0x023    0x23 // Unused Flag
 #define FLAG_UNUSED_0x024    0x24 // Unused Flag

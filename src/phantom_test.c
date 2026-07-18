@@ -8,7 +8,9 @@
 #include "main.h"
 #include "save.h"
 #include "event_data.h"
+#include "phantom.h"
 #include "constants/phantom.h"
+#include "constants/flags.h"
 #include "start_menu.h"
 #include "wild_encounter.h"
 
@@ -75,6 +77,22 @@ static void Test_NoWildEncounters(void)
     PHANTOM_ASSERT(PhantomTest_WildEncountersDisabled() == TRUE, "no-wild-encounters");
 }
 
+// Test 5 (Task 5): el special PhantomAdvanceDay avanza el reloj narrativo un paso.
+static void Test_PhantomAdvanceDay(void)
+{
+    VarSet(VAR_PHANTOM_TIME, PHANTOM_TIME_PROLOGUE);
+    PhantomAdvanceDay();
+    PHANTOM_ASSERT(VarGet(VAR_PHANTOM_TIME) == PHANTOM_TIME_DAY1, "advance-day");
+}
+
+// Test 6 (Task 5): el special PhantomMarkExecutionSeen enciende FLAG_PHANTOM_SAW_EXECUTION.
+static void Test_PhantomExecutionSeen(void)
+{
+    FlagClear(FLAG_PHANTOM_SAW_EXECUTION);
+    PhantomMarkExecutionSeen();
+    PHANTOM_ASSERT(FlagGet(FLAG_PHANTOM_SAW_EXECUTION) == TRUE, "saw-execution");
+}
+
 void PhantomTest_Run(void)
 {
     PHANTOM_CHECKPOINT("suite-start");
@@ -87,6 +105,8 @@ void PhantomTest_Run(void)
     Test_PhantomTimeInit();
     Test_NoSaveInStartMenu();
     Test_NoWildEncounters();
+    Test_PhantomAdvanceDay();
+    Test_PhantomExecutionSeen();
     PHANTOM_CHECKPOINT("suite-end");
     PhantomTest_Finish(gPhantomTestFailed);
 }
