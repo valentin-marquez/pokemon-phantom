@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-ROM=pokeemerald_modern.gba
+ROM=pokeemerald_modern_test.gba
 ROMTEST=tools/mgba/mgba-rom-test
 
 echo ">> build PHANTOM_TEST=1"

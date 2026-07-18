@@ -14,7 +14,7 @@ The output is a Game Boy Advance ROM (`pokeemerald.gba`), assembled from C, ARM/
 - `docs/design/informe-fear-and-hunger.md` — narrative principles + engine techniques.
 - `docs/design/factibilidad-y-harness.md` — per-system feasibility with verified `file:line` hooks, and the **AI testing harness** (how to build/boot/drive/debug the ROM headlessly — mGBA + GDB stub + `mgba-rom-test` + libmgba-py).
 
-Two standing rules for this project: (1) borrow from references **by function, never by literal object** — nothing lifted straight from F&H; re-encarnate it in something native to Sombraluna. (2) **`make modern` does not compile as of jul 2026** — no `arm-none-eabi-gcc` installed and no `.gba`/`.elf` in the tree; installing the toolchain and getting a first build is Phase 0 of any work here.
+Two standing rules for this project: (1) borrow from references **by function, never by literal object** — nothing lifted straight from F&H; re-encarnate it in something native to Sombraluna. (2) the `arm-none-eabi-gcc` toolchain is installed and `make modern` builds a working ROM (Phase 0 is done) — `make PHANTOM_TEST=1 modern` builds a separate test artifact (`pokeemerald_modern_test.gba`) with the in-ROM harness compiled in; `make modern` alone stays the clean release build.
 
 ## Build & run
 

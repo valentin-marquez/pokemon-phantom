@@ -31,6 +31,10 @@ static void Test_BootOk(void)
     PHANTOM_ASSERT(TRUE, "boot-reached");
 }
 
+// NOTA (gap de cobertura): estos tests llaman NewGameInitData() directo; NO
+// ejercitan el dispatch real ACTION_NEW_GAME -> CB2_NewGame (main_menu.c). El
+// recorte de Birch queda verificado "por construcción", no automatizado —
+// cerrar cuando haya inyección de inputs (Fase 2 del harness, libmgba-py).
 // Test 1 (Task 4): el Forastero es fijo (masculino, sin nombre editable).
 static void Test_NewGameProtagonist(void)
 {

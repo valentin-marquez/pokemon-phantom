@@ -74,13 +74,20 @@ endif
 
 ROM_NAME := $(FILE_NAME).gba
 OBJ_DIR_NAME := $(BUILD_DIR)/emerald
-MODERN_ROM_NAME := $(FILE_NAME)_modern.gba
 # Objetos de test viven en un OBJ_DIR separado (build/modern_test) para que
 # alternar PHANTOM_TEST entre invocaciones nunca reutilice objetos stale del
 # otro build (make no invalida objetos por cambios de CPPFLAGS, solo por deps).
+# El nombre del ROM de test también lleva sufijo `_test`: sin esto, `make
+# PHANTOM_TEST=1 modern` y `make modern` escriben el mismo pokeemerald_modern.gba,
+# y tras un smoke run el .gba en disco queda siendo el ROM de test (con el
+# harness y el svc de halt) hasta el próximo build de release — footgun de
+# seguridad para release. MODERN_ELF_NAME/MODERN_MAP_NAME se derivan de
+# MODERN_ROM_NAME más abajo, así que siguen el sufijo automáticamente.
 ifeq ($(PHANTOM_TEST),1)
+  MODERN_ROM_NAME := $(FILE_NAME)_modern_test.gba
   MODERN_OBJ_DIR_NAME := $(BUILD_DIR)/modern_test
 else
+  MODERN_ROM_NAME := $(FILE_NAME)_modern.gba
   MODERN_OBJ_DIR_NAME := $(BUILD_DIR)/modern
 endif
 
