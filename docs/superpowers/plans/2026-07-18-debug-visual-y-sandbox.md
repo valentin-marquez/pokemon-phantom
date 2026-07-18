@@ -293,59 +293,111 @@ git commit -m "feat(debug): lectura de estado por símbolo (.map + pyelftools)"
 
 ---
 
-## Task 3: Harness visual — CLI y drivers de alto nivel
+## Task 3: PHANTOM_DEBUG_BOOT (arranque directo al juego) + CLI phantom_dbg
+
+> **Descubrimiento (jul 2026):** el front-end del hack es un dead-end — title screen → (START) → minijuego shmup inacabado → vuelve al title. Nadie llama a `CB2_InitMainMenu`; NO hay ruta jugable al overworld. Para desarrollar/testear el juego mientras el front-end esté sin terminar, esta tarea añade un flag de compilación `PHANTOM_DEBUG_BOOT` que arranca directo en `CB2_NewGame`, generando una ROM aparte `pokeemerald_modern_debug.gba`. Release y título INTACTOS.
 
 **Files:**
-- Create: `tools/phantom-debug/phantom_dbg/cli.py`
-- Create: `tools/phantom-debug/phantom_dbg/__main__.py`
+- Modify: `Makefile` (flag `PHANTOM_DEBUG_BOOT` + variante de object-dir/ROM `_debug`)
+- Modify: `src/intro.c` (bajo `PHANTOM_DEBUG_BOOT`, rutear copyright → `CB2_NewGame` en vez del título)
+- Create: `tools/phantom-debug/phantom_dbg/cli.py`, `tools/phantom-debug/phantom_dbg/__main__.py`
 
 **Interfaces:**
-- Consumes: `Emu`, `SymbolReader`.
-- Produces: CLI `python -m phantom_dbg <cmd>` con subcomandos: `screenshot`, `boot-newgame`, `read`, `savestate`. `boot_new_game(emu)` como función reusable.
+- Consumes: `Emu`, `SymbolReader`; `CB2_NewGame` (`src/overworld.c:1532`, decl. `include/overworld.h:134`).
+- Produces: build `make PHANTOM_DEBUG_BOOT=1 modern` → `pokeemerald_modern_debug.gba` (arranca en el overworld de New Game). CLI `python -m phantom_dbg` con `screenshot`, `boot`, `read`. `boot(emu, frames)` reusable.
 
-- [ ] **Step 1: `cli.py` con `boot_new_game` + argparse**
+### Parte A — flag PHANTOM_DEBUG_BOOT (game-side)
+
+- [ ] **Step 1: leer la lógica actual de variantes en el Makefile** — la Fase 0-1 ya introdujo `PHANTOM_TEST` con object-dir separado (`build/modern_test`) y ROM `pokeemerald_modern_test.gba`. Localiza: el `PHANTOM_TEST ?= 0` temprano (cerca de `MODERN ?= 0`), el cálculo de `MODERN_OBJ_DIR_NAME`, el de `MODERN_ROM_NAME`, y el `ifeq ($(PHANTOM_TEST),1) CPPFLAGS += -DPHANTOM_TEST`.
+
+- [ ] **Step 2: generalizar a un sufijo de variante (`_test` / `_debug` / vacío)** — añadir `PHANTOM_DEBUG_BOOT ?= 0` junto al `PHANTOM_TEST ?= 0`, y derivar un sufijo (mutuamente excluyentes; test tiene prioridad si ambos se pasaran):
+```make
+ifeq ($(PHANTOM_TEST),1)
+  PHANTOM_SUFFIX := _test
+else ifeq ($(PHANTOM_DEBUG_BOOT),1)
+  PHANTOM_SUFFIX := _debug
+else
+  PHANTOM_SUFFIX :=
+endif
+```
+Hacer que `MODERN_OBJ_DIR_NAME` use `$(BUILD_DIR)/modern$(PHANTOM_SUFFIX)` y `MODERN_ROM_NAME` use `$(FILE_NAME)_modern$(PHANTOM_SUFFIX).gba` (reemplazando la lógica `_test`-específica). Y en el bloque de flags: mantener `-DPHANTOM_TEST` si test, y añadir `-DPHANTOM_DEBUG_BOOT` si debug:
+```make
+ifeq ($(PHANTOM_DEBUG_BOOT),1)
+  CPPFLAGS += -DPHANTOM_DEBUG_BOOT
+endif
+```
+Confirma que `make modern` (sin flags) sigue produciendo `pokeemerald_modern.gba` desde `build/modern` (release intacto).
+
+- [ ] **Step 3: rutear el arranque en `src/intro.c`** — hay dos transiciones copyright→título: en `MainCB2_EndIntro` (~`intro.c:70`, `SetMainCallback2(CB2_InitTitleScreen)`) y en `SetUpCopyrightScreen` caso `COPYRIGHT_START_INTRO` (~`intro.c:135`). Bajo `#ifdef PHANTOM_DEBUG_BOOT` rutear ambas a `CB2_NewGame`:
+```c
+#ifdef PHANTOM_DEBUG_BOOT
+    SetMainCallback2(CB2_NewGame);   // debug: salta título+minijuego, entra directo al juego
+#else
+    SetMainCallback2(CB2_InitTitleScreen);
+#endif
+```
+Añadir `#include "overworld.h"` en `intro.c` si no está (para `CB2_NewGame`). Las prerequisitas de `CB2_NewGame` (save blocks + heap) ya están inicializadas por `CB2_InitCopyrightScreenAfterBootup` antes de llegar aquí.
+
+- [ ] **Step 4: build + verificación VISUAL del debug-boot** —
+Run: `make PHANTOM_DEBUG_BOOT=1 DINFO=1 modern -j$(nproc)` (debe compilar/linkar y producir `pokeemerald_modern_debug.gba`). Luego:
+```bash
+~/.venvs/mgba-py/bin/python - <<'PY'
+import sys; sys.path.insert(0,"tools/phantom-debug")
+from phantom_dbg import Emu, SymbolReader
+e = Emu("pokeemerald_modern_debug.gba"); e.run(300)
+e.screenshot("/tmp/dbgboot.png")
+sr = SymbolReader(e, "pokeemerald_modern_debug.map", "pokeemerald_modern_debug.elf")
+print("phantomTime =", sr.read_var(0x404E), "map =", sr.player_map())
+PY
+file /tmp/dbgboot.png
+```
+Expected: `phantomTime = 1` (PROLOGUE → prueba que `NewGameInitData` corrió), y el PNG muestra contenido de JUEGO (interior del camión / Littleroot), NO el título ni el minijuego. El controlador MIRA `/tmp/dbgboot.png`. Verifica también que `make modern` (release) sigue limpio y su ROM NO arranca en New Game (opcional: bootear `pokeemerald_modern.gba` y confirmar que sale el título/copyright).
+
+- [ ] **Step 5: commit (game-side)**
+```bash
+git add Makefile src/intro.c
+git commit -m "feat(debug): flag PHANTOM_DEBUG_BOOT arranca directo en CB2_NewGame (ROM _debug)"
+```
+
+### Parte B — CLI phantom_dbg (tool-side)
+
+- [ ] **Step 6: `cli.py`** — `boot()` ya NO navega menús (la ROM debug arranca directo al overworld): solo avanza frames. La ROM por defecto es la de debug.
 ```python
-import argparse, sys
+import argparse
 from .emu import Emu
 from .symbols import SymbolReader
 
-DEF_ROM = "pokeemerald_modern.gba"
+DEF_ROM = "pokeemerald_modern_debug.gba"
+DEF_MAP = "pokeemerald_modern_debug.map"
+DEF_ELF = "pokeemerald_modern_debug.elf"
 
-def boot_new_game(emu, taps=40):
-    """Bootea y atraviesa copyright/título/menú hasta el overworld de New Game."""
-    emu.run(160)
-    for _ in range(taps):
-        emu.press("A"); emu.press("START")
-
-def _reader(emu, args):
-    return SymbolReader(emu, args.map, args.elf)
+def boot(emu, frames=300):
+    """La ROM debug (PHANTOM_DEBUG_BOOT) arranca directo en el overworld: solo avanza frames."""
+    emu.run(frames)
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog="phantom_dbg")
     p.add_argument("--rom", default=DEF_ROM)
-    p.add_argument("--map", default="pokeemerald_modern.map")
-    p.add_argument("--elf", default="pokeemerald_modern.elf")
+    p.add_argument("--map", default=DEF_MAP)
+    p.add_argument("--elf", default=DEF_ELF)
     sub = p.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("screenshot"); s.add_argument("out"); s.add_argument("--frames", type=int, default=160); s.add_argument("--newgame", action="store_true")
-    b = sub.add_parser("boot-newgame"); b.add_argument("--screenshot"); b.add_argument("--read", action="append", default=[])
-    r = sub.add_parser("read"); r.add_argument("kind", choices=["var","flag"]); r.add_argument("id"); r.add_argument("--newgame", action="store_true")
+    s = sub.add_parser("screenshot"); s.add_argument("out"); s.add_argument("--frames", type=int, default=300)
+    b = sub.add_parser("boot"); b.add_argument("--screenshot"); b.add_argument("--frames", type=int, default=300); b.add_argument("--read", action="append", default=[])
+    r = sub.add_parser("read"); r.add_argument("kind", choices=["var","flag"]); r.add_argument("id"); r.add_argument("--frames", type=int, default=300)
     args = p.parse_args(argv)
 
     emu = Emu(args.rom)
+    emu.run(args.frames)
     if args.cmd == "screenshot":
-        if args.newgame: boot_new_game(emu)
-        else: emu.run(args.frames)
         print(emu.screenshot(args.out))
-    elif args.cmd == "boot-newgame":
-        boot_new_game(emu)
+    elif args.cmd == "boot":
         if args.screenshot: print(emu.screenshot(args.screenshot))
         if args.read:
-            sr = _reader(emu, args)
+            sr = SymbolReader(emu, args.map, args.elf)
             for tok in args.read:
                 print(tok, "=", sr.read_var(int(tok, 0)))
     elif args.cmd == "read":
-        boot_new_game(emu) if args.newgame else emu.run(160)
-        sr = _reader(emu, args)
+        sr = SymbolReader(emu, args.map, args.elf)
         v = sr.read_var(int(args.id,0)) if args.kind=="var" else sr.read_flag(int(args.id,0))
         print(v)
     return 0
@@ -357,19 +409,18 @@ from .cli import main
 sys.exit(main())
 ```
 
-- [ ] **Step 2: verificar — boot-newgame con screenshot + lectura**
-Run:
+- [ ] **Step 7: verificar la CLI**
+Run desde la raíz del repo:
 ```bash
-cd tools/phantom-debug && PYTHONPATH=. ~/.venvs/mgba-py/bin/python -m phantom_dbg \
-  --rom ../../pokeemerald_modern.gba --map ../../pokeemerald_modern.map --elf ../../pokeemerald_modern.elf \
-  boot-newgame --screenshot /tmp/newgame.png --read 0x404E
+PYTHONPATH=tools/phantom-debug ~/.venvs/mgba-py/bin/python -m phantom_dbg \
+  boot --screenshot /tmp/cli.png --read 0x404E
 ```
-Expected: imprime la ruta del PNG y `0x404E = 1`. `file /tmp/newgame.png` → PNG 240×160. (El controlador debe MIRAR el PNG para confirmar que llegó al overworld, no al menú.)
+Expected: imprime la ruta del PNG y `0x404E = 1`. `file /tmp/cli.png` → PNG 240×160 de contenido de juego. (Usa las rutas por defecto `pokeemerald_modern_debug.*`.)
 
-- [ ] **Step 3: commit**
+- [ ] **Step 8: commit (tool-side)**
 ```bash
 git add tools/phantom-debug/phantom_dbg
-git commit -m "feat(debug): CLI phantom_dbg (screenshot, boot-newgame, read)"
+git commit -m "feat(debug): CLI phantom_dbg (screenshot/boot/read sobre la ROM debug)"
 ```
 
 ---
