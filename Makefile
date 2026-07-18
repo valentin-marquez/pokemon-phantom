@@ -10,6 +10,12 @@ KEEP_TEMPS  ?= 0
 # objetos compilados con -DPHANTOM_TEST contaminen un build de release posterior
 # (y viceversa) cuando make no detecta el cambio de flag entre invocaciones.
 PHANTOM_TEST ?= 0
+# Build de debug: arranca directo en CB2_NewGame (bypassa título + minijuego)
+# para desarrollar/testear el juego mientras el front-end esté sin terminar.
+# Mismo motivo que PHANTOM_TEST para declararlo temprano: deriva su propio
+# OBJ_DIR/ROM (ver PHANTOM_SUFFIX más abajo). Mutuamente excluyente con
+# PHANTOM_TEST (test tiene prioridad si ambos se pasaran).
+PHANTOM_DEBUG_BOOT ?= 0
 
 # `File name`.gba ('_modern' will be appended to the modern builds)
 FILE_NAME := pokeemerald
@@ -74,22 +80,27 @@ endif
 
 ROM_NAME := $(FILE_NAME).gba
 OBJ_DIR_NAME := $(BUILD_DIR)/emerald
-# Objetos de test viven en un OBJ_DIR separado (build/modern_test) para que
-# alternar PHANTOM_TEST entre invocaciones nunca reutilice objetos stale del
-# otro build (make no invalida objetos por cambios de CPPFLAGS, solo por deps).
-# El nombre del ROM de test también lleva sufijo `_test`: sin esto, `make
-# PHANTOM_TEST=1 modern` y `make modern` escriben el mismo pokeemerald_modern.gba,
-# y tras un smoke run el .gba en disco queda siendo el ROM de test (con el
-# harness y el svc de halt) hasta el próximo build de release — footgun de
-# seguridad para release. MODERN_ELF_NAME/MODERN_MAP_NAME se derivan de
-# MODERN_ROM_NAME más abajo, así que siguen el sufijo automáticamente.
+# Objetos de cada variante (test/debug) viven en un OBJ_DIR separado
+# (build/modern_test, build/modern_debug) para que alternar la variante entre
+# invocaciones nunca reutilice objetos stale de otra (make no invalida objetos
+# por cambios de CPPFLAGS, solo por deps). El nombre del ROM también lleva el
+# sufijo correspondiente: sin esto, `make PHANTOM_TEST=1 modern` / `make
+# PHANTOM_DEBUG_BOOT=1 modern` y `make modern` escribirían el mismo
+# pokeemerald_modern.gba, y tras un smoke run el .gba en disco quedaría siendo
+# el de la variante (con el harness/svc de halt, o el arranque directo a New
+# Game) hasta el próximo build de release — footgun de seguridad para release.
+# MODERN_ELF_NAME/MODERN_MAP_NAME se derivan de MODERN_ROM_NAME más abajo, así
+# que siguen el sufijo automáticamente. Las variantes son mutuamente
+# excluyentes; test tiene prioridad si ambas se pasaran.
 ifeq ($(PHANTOM_TEST),1)
-  MODERN_ROM_NAME := $(FILE_NAME)_modern_test.gba
-  MODERN_OBJ_DIR_NAME := $(BUILD_DIR)/modern_test
+  PHANTOM_SUFFIX := _test
+else ifeq ($(PHANTOM_DEBUG_BOOT),1)
+  PHANTOM_SUFFIX := _debug
 else
-  MODERN_ROM_NAME := $(FILE_NAME)_modern.gba
-  MODERN_OBJ_DIR_NAME := $(BUILD_DIR)/modern
+  PHANTOM_SUFFIX :=
 endif
+MODERN_ROM_NAME := $(FILE_NAME)_modern$(PHANTOM_SUFFIX).gba
+MODERN_OBJ_DIR_NAME := $(BUILD_DIR)/modern$(PHANTOM_SUFFIX)
 
 ELF_NAME := $(ROM_NAME:.gba=.elf)
 MAP_NAME := $(ROM_NAME:.gba=.map)
@@ -138,6 +149,13 @@ CPPFLAGS := $(INCLUDE_CPP_ARGS) -Wno-trigraphs -DMODERN=$(MODERN)
 PHANTOM_TEST ?= 0
 ifeq ($(PHANTOM_TEST),1)
   CPPFLAGS += -DPHANTOM_TEST
+endif
+
+# Build de debug: rutea el arranque directo a CB2_NewGame (ver src/intro.c),
+# saltando título + minijuego mientras el front-end esté sin terminar.
+PHANTOM_DEBUG_BOOT ?= 0
+ifeq ($(PHANTOM_DEBUG_BOOT),1)
+  CPPFLAGS += -DPHANTOM_DEBUG_BOOT
 endif
 
 ifeq ($(MODERN),0)

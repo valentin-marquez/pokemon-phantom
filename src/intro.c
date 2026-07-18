@@ -24,6 +24,7 @@
 #include "util.h"
 #include "constants/rgb.h"
 #include "constants/battle_anim.h"
+#include "overworld.h" // CB2_NewGame, usado bajo PHANTOM_DEBUG_BOOT
 
 /*
     The intro is grouped into the following scenes
@@ -68,7 +69,13 @@ static void VBlankCB_Intro(void)
 static void MainCB2_EndIntro(void)
 {
     if (!UpdatePaletteFade())
+    {
+#ifdef PHANTOM_DEBUG_BOOT
+        SetMainCallback2(CB2_NewGame); // debug: salta título+minijuego, entra directo al juego
+#else
         SetMainCallback2(CB2_InitTitleScreen);
+#endif
+    }
 }
 
 static void LoadCopyrightGraphics(u16 tilesetAddress, u16 tilemapAddress, u16 paletteOffset)
@@ -132,7 +139,13 @@ static u8 SetUpCopyrightScreen(void)
         // --- CAMBIO PRINCIPAL ---
         // En lugar de CreateTask(Task_Scene1_Load, 0) y SetMainCallback2(MainCB2_Intro),
         // saltamos directamente a la pantalla de título.
+#ifdef PHANTOM_DEBUG_BOOT
+        // Build de debug: salta título+minijuego, entra directo al juego (save
+        // blocks + heap ya los inicializó CB2_InitCopyrightScreenAfterBootup).
+        SetMainCallback2(CB2_NewGame);
+#else
         SetMainCallback2(CB2_InitTitleScreen);
+#endif
 
         if (gMultibootProgramStruct.gcmb_field_2 != 0)
         {
