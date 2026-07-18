@@ -24,6 +24,16 @@ PhantomSandbox_EventScript_MiniScene::
 	releaseall
 	end
 
+PhantomSandbox_EventScript_Bed::
+	lockall
+	fadescreen FADE_TO_BLACK
+	special HealPlayerParty
+	special PhantomAdvanceDay
+	call Common_EventScript_SaveGame
+	fadescreen FADE_FROM_BLACK
+	releaseall
+	end
+
 PhantomSandbox_Text_Villager:
 	.string "Bienvenido a Sombraluna,{PAUSE 8} forastero.$"
 
