@@ -47,6 +47,7 @@
 #include "union_room_chat.h"
 #include "constants/items.h"
 #include "constants/phantom.h"
+#include "wild_encounter.h"
 
 extern const u8 EventScript_ResetAllMapFlags[];
 
@@ -204,6 +205,8 @@ void NewGameInitData(void)
     StringCopy(gSaveBlock2Ptr->playerName, gText_PhantomPlayerName);
     // Pokémon Phantom: el reloj narrativo arranca en el prólogo.
     VarSet(VAR_PHANTOM_TIME, PHANTOM_TIME_PROLOGUE);
+    // Pokémon Phantom: sin encuentros aleatorios en toda la isla.
+    DisableWildEncounters(TRUE);
     WarpToTruck();
     RunScriptImmediately(EventScript_ResetAllMapFlags);
     ResetMiniGamesRecords();

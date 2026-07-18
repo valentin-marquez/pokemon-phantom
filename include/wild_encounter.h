@@ -37,4 +37,8 @@ u16 GetLocalWildMon(bool8 *isWaterMon);
 u16 GetLocalWaterMon(void);
 bool8 UpdateRepelCounter(void);
 
+#ifdef PHANTOM_TEST
+bool8 PhantomTest_WildEncountersDisabled(void);
+#endif
+
 #endif // GUARD_WILD_ENCOUNTER_H

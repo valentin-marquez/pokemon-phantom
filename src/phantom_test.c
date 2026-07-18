@@ -10,6 +10,7 @@
 #include "event_data.h"
 #include "constants/phantom.h"
 #include "start_menu.h"
+#include "wild_encounter.h"
 
 u8 gPhantomTestFailed = 0;
 
@@ -58,6 +59,18 @@ static void Test_NoSaveInStartMenu(void)
     PHANTOM_ASSERT(PhantomTest_StartMenuHasSave() == FALSE, "no-save-in-startmenu");
 }
 
+// Test 4 (Task 7): sin mapas de isla todavía, los encuentros salvajes se
+// desactivan globalmente al iniciar partida ("todo lo que te ataca te eligió").
+static void Test_NoWildEncounters(void)
+{
+    // Ensucia el flag ANTES para que la aserción falle (RED real) si
+    // NewGameInitData no lo fija: sWildEncountersDisabled es static y
+    // persiste entre llamadas de NewGameInitData en la misma suite.
+    DisableWildEncounters(FALSE);
+    NewGameInitData();
+    PHANTOM_ASSERT(PhantomTest_WildEncountersDisabled() == TRUE, "no-wild-encounters");
+}
+
 void PhantomTest_Run(void)
 {
     PHANTOM_CHECKPOINT("suite-start");
@@ -69,6 +82,7 @@ void PhantomTest_Run(void)
     PHANTOM_CHECKPOINT("after-newgame");
     Test_PhantomTimeInit();
     Test_NoSaveInStartMenu();
+    Test_NoWildEncounters();
     PHANTOM_CHECKPOINT("suite-end");
     PhantomTest_Finish(gPhantomTestFailed);
 }
