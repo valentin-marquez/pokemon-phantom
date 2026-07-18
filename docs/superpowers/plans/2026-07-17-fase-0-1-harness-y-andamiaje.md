@@ -18,6 +18,7 @@
 - **Idioma:** identificadores en inglés (consistencia con el decomp); textos de juego y comentarios de dominio en español.
 - **Comandos `make` en scripts/tool-calls:** usar `make -j$(nproc)` explícito (en shells no interactivos el alias `make -j12` no aplica).
 - **Entorno:** CachyOS (Arch), pacman. Python 3.14 del sistema; `uv` disponible para un 3.12 aislado si hace falta (Fase 2, fuera de este plan).
+- **Modo headless (decidido jul 2026):** NO se instala `mgba-qt` en esta fase — arrastra un gstreamer nuevo que choca con el estado de actualización parcial del sistema. El build no necesita emulador; el smoke test usa `mgba-rom-test` compilado **sin Qt/SDL** (`-DBUILD_QT=OFF -DBUILD_SDL=OFF`). Los pasos de "boot visual" y GDB interactivo (que sí querrían un mgba con GUI/stub) quedan como opcionales/diferidos; la verificación autoritativa es el smoke test headless. La GUI llegará con un `pacman -Syu mgba-qt` cuando Valentin actualice el sistema.
 
 ---
 
@@ -47,19 +48,19 @@
 **Interfaces:**
 - Produces: un build funcional de `make modern` y el binario `pokeemerald_modern.elf` con DWARF (para GDB en tareas posteriores).
 
-- [ ] **Step 1 (Valentin, en el prompt): instalar el toolchain**
+- [ ] **Step 1 (Valentin, en el prompt): instalar el toolchain (sin `mgba-qt`, modo headless)**
 
 Ejecuta en la sesión:
 ```
-! sudo pacman -S --needed arm-none-eabi-gcc arm-none-eabi-binutils arm-none-eabi-newlib arm-none-eabi-gdb mgba-qt make gcc
+! sudo pacman -S --needed arm-none-eabi-gcc arm-none-eabi-binutils arm-none-eabi-newlib arm-none-eabi-gdb
 ```
-(Si algún nombre de paquete no existe en el repo, avísame y ajusto — en Arch/CachyOS los ARM viven en `extra`.)
+(`make`, `gcc`, `cmake` ya están instalados/actualizados. Se omite `mgba-qt` a propósito: arrastra un gstreamer nuevo que choca con el estado de actualización parcial del sistema — la GUI se instala aparte con `pacman -Syu mgba-qt` cuando se quiera.)
 
 - [ ] **Step 2: verificar el toolchain**
 
 Run:
 ```bash
-arm-none-eabi-gcc --version && arm-none-eabi-as --version | head -1 && mgba-qt --version 2>&1 | head -1
+arm-none-eabi-gcc --version | head -1 && arm-none-eabi-as --version | head -1 && arm-none-eabi-gdb --version | head -1
 ```
 Expected: versiones impresas, sin "command not found".
 
@@ -77,10 +78,9 @@ ls -la pokeemerald_modern.gba pokeemerald_modern.elf pokeemerald_modern.map
 ```
 Los tres deben existir. (Este primer build es lento; los siguientes son incrementales.)
 
-- [ ] **Step 5 (Valentin o agente con display): boot visual**
+- [ ] **Step 5 (OPCIONAL — diferido en modo headless): boot visual**
 
-Run: `mgba-qt pokeemerald_modern.gba`
-Expected: arranca, muestra copyright → tu title screen custom. Cierra la ventana tras confirmar. (Si corre headless, salta este paso; el smoke test de la Task 3 lo cubre.)
+Sin `mgba-qt` instalado, se **salta** este paso; la prueba de boot la da el smoke test de la Task 3 (`mgba-rom-test` headless). Si más adelante instalas la GUI (`pacman -Syu mgba-qt`), puedes confirmar visualmente con `mgba-qt pokeemerald_modern.gba` (copyright → title screen custom).
 
 - [ ] **Step 6: confirmar que los artefactos están git-ignored**
 
@@ -426,14 +426,14 @@ En el `switch (action)`, reemplaza el cuerpo del `case ACTION_NEW_GAME: default:
 Run: `./test/smoke.sh`
 Expected: `:P PASS protagonist-male`, `:P PASS boot-reached`, `SMOKE: OK`.
 
-- [ ] **Step 7: verificación manual del recorte (con display) o por GDB**
+- [ ] **Step 7: verificación del recorte (headless)**
 
-Con display:
+La aserción `protagonist-male` del smoke test ya prueba que `NewGameInitData` fija el Forastero. Que el flujo salte Birch se verifica por construcción (el `case ACTION_NEW_GAME` ya no crea `Task_NewGameBirchSpeech_Init`): confirma con un grep que no queda ninguna referencia viva a la charla en la ruta de New Game:
 ```bash
-make modern -j$(nproc) && mgba-qt pokeemerald_modern.gba
+grep -n "Task_NewGameBirchSpeech_Init" src/main_menu.c
 ```
-New Game debe ir del menú principal al juego sin pantalla de nombre ni charla de Birch.
-Sin display (headless), verifica por GDB que no se entra a la intro de Birch — ver `test/gdb-read.sh` (Task 5); pon breakpoint en el símbolo de la intro y confirma que no se alcanza. (Anota el resultado en el commit.)
+Expected: solo aparece en el prototipo (`:191`) y en la definición de la función (~`:1265`), **no** dentro del `switch (action)` (líneas ~1058-1063). La función queda como código muerto inofensivo (se puede limpiar en un plan posterior).
+(Opcional, si más adelante instalas `mgba-qt`: `mgba-qt pokeemerald_modern.gba` y confirma que New Game entra al juego sin pantalla de nombre ni Birch.)
 
 - [ ] **Step 8: commit**
 
