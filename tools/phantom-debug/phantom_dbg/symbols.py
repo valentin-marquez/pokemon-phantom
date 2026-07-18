@@ -3,7 +3,8 @@ import re
 from elftools.elf.elffile import ELFFile
 
 VARS_START = 0x4000   # include/constants/vars.h
-FLAGS_START = 0x0      # los flags se indexan desde 0 en el bit-array
+SPECIAL_VARS_START = 0x8000   # include/constants/vars.h
+SPECIAL_FLAGS_START = 0x4000  # include/constants/flags.h
 
 
 class SymbolReader:
@@ -52,10 +53,14 @@ class SymbolReader:
         return self.emu.mem_u32(self.global_addr("gSaveBlock1Ptr"))
 
     def read_var(self, var_id):
+        if var_id >= SPECIAL_VARS_START:
+            raise ValueError(f"var 0x{var_id:X} es special (fuera de SaveBlock1.vars); no soportado")
         base = self._sb1() + self.struct_offset("SaveBlock1", "vars")
         return self.emu.mem_u16(base + 2 * (var_id - VARS_START))
 
     def read_flag(self, flag_id):
+        if flag_id >= SPECIAL_FLAGS_START:
+            raise ValueError(f"flag 0x{flag_id:X} es special (fuera de SaveBlock1.flags); no soportado")
         base = self._sb1() + self.struct_offset("SaveBlock1", "flags")
         byte = self.emu.mem_u8(base + (flag_id >> 3))
         return bool(byte & (1 << (flag_id & 7)))
@@ -67,7 +72,9 @@ class SymbolReader:
         return (grp, num)
 
     def player_xy(self):
-        base = self._sb1() + self.struct_offset("SaveBlock1", "location")
-        x = self.emu.mem_u16(base + self.struct_offset("WarpData", "x"))
-        y = self.emu.mem_u16(base + self.struct_offset("WarpData", "y"))
+        # posición viva del jugador: SaveBlock1.pos (struct Coords16), no
+        # SaveBlock1.location (WarpData del último warp, queda stale al caminar)
+        base = self._sb1() + self.struct_offset("SaveBlock1", "pos")
+        x = self.emu.mem_u16(base + self.struct_offset("Coords16", "x"))
+        y = self.emu.mem_u16(base + self.struct_offset("Coords16", "y"))
         return (x, y)
