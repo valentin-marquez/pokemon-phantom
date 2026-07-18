@@ -1539,7 +1539,10 @@ void CB2_NewGame(void)
     PlayTimeCounter_Start();
     ScriptContext_Init();
     UnlockPlayerFieldControls();
-    gFieldCallback = ExecuteTruckSequence;
+    // Pokémon Phantom: temporary sandbox redirect (Task 4 slice). The truck
+    // cutscene doesn't apply since New Game now warps into the sandbox map;
+    // use the plain warp-exit fade instead. Revert once the real intro exists.
+    gFieldCallback = FieldCB_WarpExitFadeFromBlack;
     gFieldCallback2 = NULL;
     DoMapLoadLoop(&gMain.state);
     SetFieldVBlankCallback();

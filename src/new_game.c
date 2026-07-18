@@ -134,7 +134,10 @@ static void ClearFrontierRecord(void)
 
 static void WarpToTruck(void)
 {
-    SetWarpDestination(MAP_GROUP(MAP_INSIDE_OF_TRUCK), MAP_NUM(MAP_INSIDE_OF_TRUCK), WARP_ID_NONE, -1, -1);
+    // Pokémon Phantom: temporary sandbox redirect (Task 4 slice). Skips the
+    // truck cutscene and warps New Game straight into MAP_PHANTOM_SANDBOX
+    // instead of MAP_INSIDE_OF_TRUCK. Revert once the real intro exists.
+    SetWarpDestination(MAP_GROUP(MAP_PHANTOM_SANDBOX), MAP_NUM(MAP_PHANTOM_SANDBOX), WARP_ID_NONE, 6, 6);
     WarpIntoMap();
 }
 
