@@ -24,6 +24,9 @@
 #include "main.h"
 #include "trainer_hill.h"
 #include "constants/rgb.h"
+#ifdef PHANTOM_TEST
+#include "phantom_test.h"
+#endif
 
 static void VBlankIntr(void);
 static void HBlankIntr(void);
@@ -124,6 +127,9 @@ void AgbMain(void)
 #ifndef NDEBUG
 #if (LOG_HANDLER == LOG_HANDLER_MGBA_PRINT)
     (void) MgbaOpen();
+#ifdef PHANTOM_TEST
+    PhantomTest_Run(); // no retorna: corre la suite y termina la emulación
+#endif
 #elif (LOG_HANDLER == LOG_HANDLER_AGB_PRINT)
     AGBPrintInit();
 #endif

@@ -5,6 +5,11 @@ MAKER_CODE  := 01
 REVISION    := 0
 MODERN      ?= 0
 KEEP_TEMPS  ?= 0
+# Build de test: habilita el harness in-ROM (src/phantom_test.c) y el log de mGBA.
+# Declarado aquí (temprano) para poder derivar un OBJ_DIR separado y evitar que
+# objetos compilados con -DPHANTOM_TEST contaminen un build de release posterior
+# (y viceversa) cuando make no detecta el cambio de flag entre invocaciones.
+PHANTOM_TEST ?= 0
 
 # `File name`.gba ('_modern' will be appended to the modern builds)
 FILE_NAME := pokeemerald
@@ -70,7 +75,14 @@ endif
 ROM_NAME := $(FILE_NAME).gba
 OBJ_DIR_NAME := $(BUILD_DIR)/emerald
 MODERN_ROM_NAME := $(FILE_NAME)_modern.gba
-MODERN_OBJ_DIR_NAME := $(BUILD_DIR)/modern
+# Objetos de test viven en un OBJ_DIR separado (build/modern_test) para que
+# alternar PHANTOM_TEST entre invocaciones nunca reutilice objetos stale del
+# otro build (make no invalida objetos por cambios de CPPFLAGS, solo por deps).
+ifeq ($(PHANTOM_TEST),1)
+  MODERN_OBJ_DIR_NAME := $(BUILD_DIR)/modern_test
+else
+  MODERN_OBJ_DIR_NAME := $(BUILD_DIR)/modern
+endif
 
 ELF_NAME := $(ROM_NAME:.gba=.elf)
 MAP_NAME := $(ROM_NAME:.gba=.map)
@@ -114,6 +126,13 @@ INCLUDE_SCANINC_ARGS := $(INCLUDE_DIRS:%=-I %)
 
 O_LEVEL ?= 2
 CPPFLAGS := $(INCLUDE_CPP_ARGS) -Wno-trigraphs -DMODERN=$(MODERN)
+
+# Build de test: habilita el harness in-ROM (src/phantom_test.c) y el log de mGBA.
+PHANTOM_TEST ?= 0
+ifeq ($(PHANTOM_TEST),1)
+  CPPFLAGS += -DPHANTOM_TEST
+endif
+
 ifeq ($(MODERN),0)
   CPPFLAGS += -I tools/agbcc/include -I tools/agbcc -nostdinc -undef -std=gnu89
   CC1 := tools/agbcc/bin/agbcc$(EXE)
