@@ -13,7 +13,7 @@ DEF_MAP = "pokeemerald_modern_debug.map"
 DEF_ELF = "pokeemerald_modern_debug.elf"
 
 
-def boot(emu, frames=300):
+def boot(emu, frames=600):
     """La ROM debug (PHANTOM_DEBUG_BOOT) arranca directo en el overworld: solo avanza frames."""
     emu.run(frames)
 
@@ -26,15 +26,15 @@ def main(argv=None):
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("screenshot")
     s.add_argument("out")
-    s.add_argument("--frames", type=int, default=300)
+    s.add_argument("--frames", type=int, default=600)
     b = sub.add_parser("boot")
     b.add_argument("--screenshot")
-    b.add_argument("--frames", type=int, default=300)
+    b.add_argument("--frames", type=int, default=600)
     b.add_argument("--read", action="append", default=[])
     r = sub.add_parser("read")
     r.add_argument("kind", choices=["var", "flag"])
     r.add_argument("id")
-    r.add_argument("--frames", type=int, default=300)
+    r.add_argument("--frames", type=int, default=600)
     args = p.parse_args(argv)
 
     emu = Emu(args.rom)

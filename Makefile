@@ -16,6 +16,12 @@ PHANTOM_TEST ?= 0
 # OBJ_DIR/ROM (ver PHANTOM_SUFFIX más abajo). Mutuamente excluyente con
 # PHANTOM_TEST (test tiene prioridad si ambos se pasaran).
 PHANTOM_DEBUG_BOOT ?= 0
+# Guard: no combinar variantes — compilarían ambos -D y el ROM "test" llevaría
+# también el arranque directo (o viceversa). El sufijo ya prioriza test, pero
+# los -D son independientes; aquí cerramos el footgun explícitamente.
+ifeq ($(PHANTOM_TEST)$(PHANTOM_DEBUG_BOOT),11)
+  $(error PHANTOM_TEST y PHANTOM_DEBUG_BOOT son mutuamente excluyentes; pasa solo uno)
+endif
 
 # `File name`.gba ('_modern' will be appended to the modern builds)
 FILE_NAME := pokeemerald
