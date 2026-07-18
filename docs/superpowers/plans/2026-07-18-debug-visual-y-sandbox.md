@@ -461,14 +461,14 @@ PhantomSandbox_MapScripts::
 ```
 Y en `src/overworld.c:1542` cambiar `gFieldCallback = ExecuteTruckSequence;` por `gFieldCallback = FieldCB_WarpExitFadeFromBlack;`. (Comentar el porqué: redirect temporal del sandbox.)
 
-- [ ] **Step 7: build + verificación VISUAL**
-Run: `make modern -j$(nproc)` (debe compilar y linkar) y luego:
+- [ ] **Step 7: build + verificación VISUAL (ROM debug)**
+Construir la ROM de debug (la que arranca directo en New Game → ahora warpea al sandbox) y capturar con el harness. Usar ~800 frames para pasar el fundido de entrada:
+Run: `make PHANTOM_DEBUG_BOOT=1 DINFO=1 modern -j$(nproc)` (debe compilar y linkar), luego:
 ```bash
-cd tools/phantom-debug && PYTHONPATH=. ~/.venvs/mgba-py/bin/python -m phantom_dbg \
-  --rom ../../pokeemerald_modern.gba --map ../../pokeemerald_modern.map --elf ../../pokeemerald_modern.elf \
-  boot-newgame --screenshot /tmp/sandbox.png --read 0x404E
+PYTHONPATH=tools/phantom-debug ~/.venvs/mgba-py/bin/python -m phantom_dbg \
+  boot --frames 800 --screenshot /tmp/sandbox.png --read 0x404E
 ```
-Expected: linka sin error; el PNG muestra al jugador de pie en el mapa sandbox (tileset de Dewford), NO el camión ni Littleroot. El controlador MIRA `/tmp/sandbox.png`. (Ajustar coords si el spawn cae en colisión.)
+(La CLI usa por defecto `pokeemerald_modern_debug.*`.) Expected: linka sin error; `0x404E = 1`; y el PNG muestra al jugador de pie en el mapa sandbox (tileset de Dewford), NO el camión (InsideOfTruck) ni Littleroot. El controlador MIRA `/tmp/sandbox.png` y confirma `player_map()` ≠ el del camión (25,40). (Ajustar coords de spawn si cae en colisión.) Verifica también que `make modern` (release) sigue mostrando el título.
 
 - [ ] **Step 8: commit**
 ```bash
@@ -582,7 +582,7 @@ Include `"phantom.h"`, `"constants/phantom.h"`, `"constants/flags.h"` según hag
 Run: `./test/smoke.sh`. Primero, con los tests puestos pero antes de registrar los specials correctamente, deben poder fallar (RED real: p.ej. comenta el cuerpo de `PhantomAdvanceDay` → `:P FAIL advance-day`). Restaura → `SMOKE: OK`. Luego `make modern -j$(nproc)` limpio.
 
 - [ ] **Step 8: verificación VISUAL del NPC/escena**
-Run el `boot-newgame --screenshot`, luego (si el NPC/escena necesita inputs) extiende una secuencia de teclas para acercarse y hablar; captura antes/después. El controlador MIRA los PNG para confirmar el cuadro de diálogo. (La escena en sí se valida mejor en la Task 6 por el efecto de paleta.)
+Reconstruir la ROM debug (`make PHANTOM_DEBUG_BOOT=1 DINFO=1 modern -j$(nproc)`) y con el harness (`python -m phantom_dbg boot --frames 800 --screenshot ...`) capturar; si el NPC/escena necesita inputs, extiende una secuencia de teclas (con `Emu.press`) para acercarse y hablar; captura antes/después. El controlador MIRA los PNG para confirmar el cuadro de diálogo. (La escena en sí se valida mejor en la Task 6 por el efecto de paleta.)
 
 - [ ] **Step 9: commit**
 ```bash
@@ -633,16 +633,8 @@ Declararlo en `include/phantom.h`.
 - [ ] **Step 4: hook sprites en `src/event_object_movement.c:2048`** — tras el `LoadPalette(..., OBJ_PLTT_ID(slot), PLTT_SIZE_4BPP)` de `PatchObjectPalette`, añadir `Phantom_TintPaletteRange(OBJ_PLTT_ID(slot), 16);` (incluir `phantom.h`).
 
 - [ ] **Step 5: build + verificación VISUAL antes/después (el pay-off)**
-Run: `make modern -j$(nproc)`, luego con el harness:
-```bash
-# ANTES: boot al sandbox, screenshot a color
-python -m phantom_dbg ... boot-newgame --screenshot /tmp/before.png
-```
-Luego dispara la mini-escena (secuencia de inputs para tocar el trigger, que enciende `FLAG_PHANTOM_MEOWTH_EXECUTED`) y captura de nuevo tras recargar el mapa (salir y entrar, o el propio fade de la escena):
-```bash
-# DESPUÉS: screenshot desaturado
-```
-Expected: `/tmp/before.png` a color normal; `/tmp/after.png` visiblemente más gris. **El controlador COMPARA las dos imágenes** — este es el criterio de éxito de la tarea. Si el look no convence (muy gris / poco), es el momento de ajustar la mezcla (ver la nota de la guía sobre `TintPalette_CustomTone` y la fuerza).
+Run: `make PHANTOM_DEBUG_BOOT=1 DINFO=1 modern -j$(nproc)`, luego con el harness (un script Python con `Emu`): boot ~800 frames al sandbox → `screenshot("/tmp/before.png")` (a color). Luego dispara la mini-escena (secuencia de `emu.press(...)` para tocar el trigger, que enciende `FLAG_PHANTOM_MEOWTH_EXECUTED`) y, para forzar la recarga de paletas del mapa, provoca un warp de salida+entrada o corre suficientes frames tras el fade; captura `screenshot("/tmp/after.png")`.
+Expected: `/tmp/before.png` a color normal; `/tmp/after.png` visiblemente más gris. **El controlador COMPARA las dos imágenes** — este es el criterio de éxito de la tarea. Si el look no convence (muy gris / poco), es el momento de ajustar la mezcla (ver la nota de la guía sobre `TintPalette_CustomTone` y la fuerza). El controlador (no solo el subagente) MIRA before/after.
 
 - [ ] **Step 6: verificar que menús/combate NO se desaturan** — abre un menú (Start) por inputs y captura: la UI NO debe estar gris (confirma que el tinte no tocó el `LoadPalette` global). Screenshot de control.
 
@@ -680,7 +672,7 @@ PhantomSandbox_EventScript_Bed::
 (Orden crítico: avanzar día ANTES de guardar.)
 
 - [ ] **Step 3: build + verificación VISUAL + por memoria**
-Run: `make modern -j$(nproc)`. Con el harness: boot al sandbox, leer `VAR_PHANTOM_TIME` (debe ser 1/PROLOGUE... o el valor de arranque), inyectar inputs para ir a la cama e interactuar (aceptar el guardado), y volver a leer `VAR_PHANTOM_TIME` — debe haber incrementado. El controlador confirma por `--read 0x404E` antes/después y mira el PNG del fundido.
+Run: `make PHANTOM_DEBUG_BOOT=1 DINFO=1 modern -j$(nproc)`. Con el harness (script `Emu`): boot ~800 frames al sandbox, leer `VAR_PHANTOM_TIME` (=1/PROLOGUE de arranque), inyectar `emu.press(...)` para ir a la cama e interactuar (aceptar el guardado con la caja Yes/No), correr frames, y volver a leer `VAR_PHANTOM_TIME` — debe haber incrementado a 2 (DAY1). El controlador confirma por lectura de memoria antes/después y mira el PNG del fundido de la cama.
 Expected: el valor de `VAR_PHANTOM_TIME` sube en 1 tras dormir.
 
 - [ ] **Step 4: commit**
