@@ -38,17 +38,17 @@ void Phantom_TintPaletteRange(u16 offset, u16 count)
         s32 g = GET_G(c);
         s32 b = GET_B(c);
         u32 gray = (r * Q_8_8(0.3) + g * Q_8_8(0.59) + b * Q_8_8(0.1133)) >> 8;
-        // Tono verde enfermizo ("luna mala"): el gris se sesga hacia el verde.
-        s32 tr = gray * 12 / 16;
-        s32 tg = gray * 17 / 16;
-        s32 tb = gray * 10 / 16;
-        // Solo tg puede pasar de 31 (17/16 > 1); RGB2 NO enmascara, así que un
-        // valor ≥32 sangraría al canal contiguo. tr/tb usan factores <1, no clampan.
-        if (tg > 31) tg = 31;
+        // Tono rojizo enfermizo: el gris se sesga hacia el rojo, mezcla ~62%
+        // (3/8 original + 5/8 tono) — marcado pero aún legible.
+        s32 tr = gray * 18 / 16;
+        s32 tg = gray * 11 / 16;
+        s32 tb = gray * 11 / 16;
+        // Solo tr puede pasar de 31 (18/16 > 1); RGB2 NO enmascara → clampar.
+        if (tr > 31) tr = 31;
 
-        r = (r + tr) >> 1;
-        g = (g + tg) >> 1;
-        b = (b + tb) >> 1;
+        r = (r * 3 + tr * 5) >> 3;
+        g = (g * 3 + tg * 5) >> 3;
+        b = (b * 3 + tb * 5) >> 3;
 
         gPlttBufferUnfaded[offset + i] = RGB2(r, g, b);
         gPlttBufferFaded[offset + i]   = RGB2(r, g, b);
