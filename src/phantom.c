@@ -42,6 +42,8 @@ void Phantom_TintPaletteRange(u16 offset, u16 count)
         s32 tr = gray * 12 / 16;
         s32 tg = gray * 17 / 16;
         s32 tb = gray * 10 / 16;
+        // Solo tg puede pasar de 31 (17/16 > 1); RGB2 NO enmascara, así que un
+        // valor ≥32 sangraría al canal contiguo. tr/tb usan factores <1, no clampan.
         if (tg > 31) tg = 31;
 
         r = (r + tr) >> 1;
