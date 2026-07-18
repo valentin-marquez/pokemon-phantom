@@ -3,6 +3,12 @@
 
 #ifdef PHANTOM_TEST
 
+#include "load_save.h"
+#include "new_game.h"
+#include "main.h"
+#include "save.h"
+#include "constants/pokemon.h" // MALE/FEMALE
+
 u8 gPhantomTestFailed = 0;
 
 // Termina la emulación: deja exitCode en r0 y ejecuta el svc que
@@ -22,10 +28,22 @@ static void Test_BootOk(void)
     PHANTOM_ASSERT(TRUE, "boot-reached");
 }
 
+// Test 1 (Task 4): el Forastero es fijo (masculino, sin nombre editable).
+static void Test_NewGameProtagonist(void)
+{
+    NewGameInitData();
+    PHANTOM_ASSERT(gSaveBlock2Ptr->playerGender == MALE, "protagonist-male");
+}
+
 void PhantomTest_Run(void)
 {
     PHANTOM_CHECKPOINT("suite-start");
     Test_BootOk();
+    // Setup compartido de estado para los tests de new game (Tasks 4/5/7).
+    SetSaveBlocksPointers(GetSaveBlocksPointersBaseOffset());
+    PHANTOM_CHECKPOINT("before-newgame");
+    Test_NewGameProtagonist();
+    PHANTOM_CHECKPOINT("after-newgame");
     PHANTOM_CHECKPOINT("suite-end");
     PhantomTest_Finish(gPhantomTestFailed);
 }

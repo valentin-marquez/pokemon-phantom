@@ -1,5 +1,6 @@
 #include "global.h"
 #include "new_game.h"
+#include "string_util.h"
 #include "random.h"
 #include "pokemon.h"
 #include "roamer.h"
@@ -60,6 +61,11 @@ static const struct ContestWinner sContestWinnerPicDummy =
     .monName = _(""),
     .trainerName = _("")
 };
+
+// Pokémon Phantom: el Forastero es fijo (masculino, sin nombre editable).
+// Placeholder interno; casi nunca se muestra (ajustable si/cuando se decida
+// mostrar un nombre en pantalla).
+static const u8 gText_PhantomPlayerName[] = _("?");
 
 void SetTrainerId(u32 trainerId, u8 *dst)
 {
@@ -192,6 +198,9 @@ void NewGameInitData(void)
     InitDewfordTrend();
     ResetFanClub();
     ResetLotteryCorner();
+    // Pokémon Phantom: el Forastero es fijo (masculino, sin nombre editable).
+    gSaveBlock2Ptr->playerGender = MALE;
+    StringCopy(gSaveBlock2Ptr->playerName, gText_PhantomPlayerName);
     WarpToTruck();
     RunScriptImmediately(EventScript_ResetAllMapFlags);
     ResetMiniGamesRecords();
