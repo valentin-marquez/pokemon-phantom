@@ -531,20 +531,25 @@ Expected: `:P PASS phantom-time-prologue`, `SMOKE: OK`.
 
 ```bash
 #!/usr/bin/env bash
-# Lee una expresión C del ROM en marcha vía el stub GDB de mGBA.
-# Uso: test/gdb-read.sh 'VarGet(VAR_PHANTOM_TIME)'  (con mgba-qt ... -g corriendo)
-# Requiere: mgba-qt pokeemerald_modern.gba -g &   (stub en :2345)
+# Lee una expresión C del ROM en marcha vía el stub GDB de mGBA (BEST-EFFORT).
+# Requiere un emulador con stub GDB en :2345 (mgba-qt ... -g &).
+# Uso: test/gdb-read.sh 'gSaveBlock1Ptr->vars[0x404E-0x4000]'   # VAR_PHANTOM_TIME
+# Patrón: breakpoint en un símbolo frecuente → continue → evalúa DETENIDO.
+# NO usar `continue &`/`interrupt` (en all-stop no hace background y cuelga).
+# Solo breakpoints + lecturas (watchpoints del stub rotos).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 EXPR="${1:?uso: gdb-read.sh '<expr C>'}"
-gdb -q -batch pokeemerald_modern.elf \
+BREAK_AT="${GDB_BREAK_AT:-CB2_Overworld}"
+timeout "${GDB_TIMEOUT:-30}" gdb -q -batch pokeemerald_modern.elf \
   -ex 'target remote localhost:2345' \
-  -ex 'continue &' -ex 'interrupt' \
+  -ex "break $BREAK_AT" -ex 'continue' \
   -ex "print $EXPR" \
-  -ex 'detach' 2>&1 | grep -A1 "\$"
+  -ex 'detach' 2>&1 | grep -E '\$[0-9]+ =' || {
+    echo "gdb-read: sin resultado (¿emulador con -g en :2345? ¿$BREAK_AT? ¿timeout?)" >&2; exit 1; }
 ```
 Run: `chmod +x test/gdb-read.sh`
-(Nota: solo breakpoints/lecturas; sin watchpoints — están rotos en el stub de mGBA. Este helper es best-effort para inspección manual; el pass/fail autoritativo es el smoke test.)
+(Best-effort para inspección manual; el pass/fail autoritativo es el smoke test. Requiere mgba-qt con GUI, aún no instalado en este entorno — no verificado E2E todavía. Solo breakpoints/lecturas; watchpoints del stub de mGBA rotos.)
 
 - [ ] **Step 8: commit**
 
