@@ -1,2 +1,3 @@
 from .emu import Emu
-__all__ = ["Emu"]
+from .symbols import SymbolReader
+__all__ = ["Emu", "SymbolReader"]
