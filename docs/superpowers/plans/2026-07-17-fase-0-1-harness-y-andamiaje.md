@@ -344,13 +344,17 @@ git commit -m "test: harness de smoke test in-ROM + runner headless (mgba-rom-te
 - Consumes: harness de Task 3 (`PHANTOM_ASSERT`, secuencia en `PhantomTest_Run`).
 - Produces: tras New Game, `gSaveBlock2Ptr->playerGender == MALE` y el flujo no pasa por `CB2_InitBirchsBattle`/naming. **Además introduce el setup de save-blocks en `PhantomTest_Run`** (`SetSaveBlocksPointers(...)`) del que dependen los tests de estado de las Tasks 5 y 7 — por eso esos tests pueden llamar `NewGameInitData()` sin preparar los punteros ellos mismos.
 
-- [ ] **Step 1: localizar el flujo real de New Game (lectura, no cambio)**
+- [ ] **Step 1: confirmar el flujo real de New Game (ya verificado — solo re-confirmar líneas)**
 
-Run:
+Símbolos verificados (jul 2026) contra el código; re-confirma que siguen ahí antes de editar:
 ```bash
-grep -n "Birch\|CB2_NewGame\|Task_NewGameBirch\|playerGender\|CB2_InitMainMenu\|MAIN_MENU_NEWGAME\|NAMING_SCREEN\|DoNamingScreen" src/main_menu.c | head -40
+sed -n '1056,1069p' src/main_menu.c   # switch(action): case ACTION_NEW_GAME (~1058-1063) lanza Task_NewGameBirchSpeech_Init
+sed -n '1532,1548p' src/overworld.c   # CB2_NewGame: llama NewGameInitData() y entra al field vía ExecuteTruckSequence
 ```
-Expected: identifica la cadena New Game → intro de Birch (naming/género) → `CB2_NewGame`/overworld. Anota los símbolos reales (los números de línea de la auditoría son orientativos; **confía en el grep**).
+Hechos clave:
+- El despacho de New Game está en `src/main_menu.c:1058-1063` (`case ACTION_NEW_GAME: default:`), que hoy hace `gTasks[taskId].func = Task_NewGameBirchSpeech_Init;` (arranca la charla de Birch + género + naming).
+- La rama `ACTION_CONTINUE` (justo debajo, ~1064-1069) es el molde a imitar: pone el pltt a negro, `SetMainCallback2(CB2_ContinueSavedGame)` y `DestroyTask(taskId)`.
+- `CB2_NewGame` (`src/overworld.c:1532`, declarado `include/overworld.h:134`) ya llama `NewGameInitData()` y entra al overworld — es el destino correcto para saltar Birch. El `ExecuteTruckSequence` (intro del camión en Littleroot) queda como placeholder hasta que existan los mapas de la isla.
 
 - [ ] **Step 2: escribir la aserción que FALLA (protagonista fijo)**
 
@@ -390,26 +394,32 @@ Expected: hoy `NewGameInitData` no fija el género → o bien `FAIL protagonist-
 
 - [ ] **Step 4: fijar género/nombre en `NewGameInitData` (`src/new_game.c`)**
 
-Dentro de `NewGameInitData()` (después de la limpieza de `gSaveBlock2`), fuerza el protagonista:
+Dentro de `NewGameInitData()` (def. en `new_game.c:149`, antes del `WarpToTruck()` de `:195`), fuerza el protagonista:
 ```c
     // Pokémon Phantom: el Forastero es fijo (masculino, sin nombre editable).
     gSaveBlock2Ptr->playerGender = MALE;
     StringCopy(gSaveBlock2Ptr->playerName, gText_PhantomPlayerName);
 ```
-Añade el texto del nombre. En `src/new_game.c` (cerca de otros `static const u8 gText_...`, o en `src/strings.c`):
+El campo es `playerName[PLAYER_NAME_LENGTH + 1]` con **`PLAYER_NAME_LENGTH == 7`**, así que el nombre interno debe caber en ≤7 caracteres (el Forastero es "sin nombre"; este valor casi nunca se muestra). Placeholder que cabe — ajustable cuando decidamos si/cómo se muestra:
 ```c
-static const u8 gText_PhantomPlayerName[] = _("FORASTERO");
+static const u8 gText_PhantomPlayerName[] = _("?");
 ```
-(Si va en `strings.c`, declara `extern` y quita `static`. Usa `_()` para el charmap.)
+Añádelo cerca de otros `static const u8 gText_...` en `src/new_game.c`. Requiere `#include "string_util.h"` (para `StringCopy`) y `#include "constants/global.h"` (para `MALE`) si no están ya en el archivo. `MALE` = 0 (`include/constants/global.h:113`).
 
-- [ ] **Step 5: saltar la intro de Birch en `src/main_menu.c`**
+- [ ] **Step 5: saltar la intro de Birch en `src/main_menu.c` (líneas 1058-1063)**
 
-Redirige el handler de New Game para que, en vez de arrancar la secuencia de Birch (naming/género/battle), vaya directo a `CB2_NewGame` (que inicializa el juego y carga el overworld). Basándote en los símbolos del Step 1, cambia el `SetMainCallback2(...)`/task que lanza la intro de Birch por:
+En el `switch (action)`, reemplaza el cuerpo del `case ACTION_NEW_GAME: default:` (que hoy hace `gTasks[taskId].func = Task_NewGameBirchSpeech_Init;`) por el mismo patrón que usa `ACTION_CONTINUE`, pero apuntando a `CB2_NewGame`:
 ```c
-    // Pokémon Phantom: sin intro de Birch ni selección de nombre/género.
-    SetMainCallback2(CB2_NewGame);
+            case ACTION_NEW_GAME:
+            default:
+                gPlttBufferUnfaded[0] = RGB_BLACK;
+                gPlttBufferFaded[0] = RGB_BLACK;
+                // Pokémon Phantom: sin charla de Birch ni selección de nombre/género.
+                SetMainCallback2(CB2_NewGame);
+                DestroyTask(taskId);
+                break;
 ```
-(El símbolo exacto y el punto de reemplazo salen del grep del Step 1. `CB2_NewGame` ya existe en el flujo vanilla; solo se adelanta.)
+`CB2_NewGame` (`overworld.c:1532`) ya llama `NewGameInitData()` (donde viven nuestras inits de las Tasks 4/5/7) y entra al field. Verifica que `include/overworld.h` esté incluido en `main_menu.c` (lo está en vanilla); si no, añádelo.
 
 - [ ] **Step 6: correr el smoke test (debe PASAR) + boot smoke intacto**
 
@@ -448,13 +458,10 @@ git commit -m "feat: recortar intro de Birch y fijar el protagonista (Forastero)
 - Consumes: `VarSet`/`VarGet` (`include/event_data.h`); un `VAR_UNUSED_*` persistente (rango 0x404E–0x40FF, `include/constants/vars.h`); el setup de save-blocks que `PhantomTest_Run` ya hace (Task 4) — este test corre después de él y solo llama `NewGameInitData()`.
 - Produces: `VAR_PHANTOM_TIME` y las constantes `PHANTOM_TIME_PROLOGUE..PHANTOM_TIME_DAWN`. Lo consumen todos los sistemas por-día en planes posteriores.
 
-- [ ] **Step 1: elegir un `VAR_UNUSED_*` libre (lectura)**
+- [ ] **Step 1: confirmar el `VAR_UNUSED` a usar (ya verificado)**
 
-Run:
-```bash
-grep -n "VAR_UNUSED\|0x404E\|VARS_END" include/constants/vars.h | head
-```
-Expected: confirma un identificador `VAR_UNUSED_XXXX` persistente disponible (p.ej. el primero del rango). Anótalo.
+Run: `grep -n "VAR_UNUSED_0x404E" include/constants/vars.h`
+Expected: `include/constants/vars.h:98: #define VAR_UNUSED_0x404E 0x404E // Unused Var` — es el primer var persistente libre del rango (0x404E–0x40FF), verificado. Se usa como base de `VAR_PHANTOM_TIME`.
 
 - [ ] **Step 2: crear `include/constants/phantom.h`**
 
@@ -464,8 +471,8 @@ Expected: confirma un identificador `VAR_UNUSED_XXXX` persistente disponible (p.
 
 // Estado-mundo de Pokémon Phantom. Ver docs/superpowers/specs/2026-07-17-pokemon-phantom-design.md
 
-// Reutiliza un VAR_UNUSED persistente (confirmado en include/constants/vars.h).
-#define VAR_PHANTOM_TIME   VAR_UNUSED_0x404E   // <-- sustituir por el elegido en el Step 1
+// Reutiliza el primer VAR_UNUSED persistente libre (verificado: vars.h:98).
+#define VAR_PHANTOM_TIME   VAR_UNUSED_0x404E
 
 // Franjas narrativas (el tiempo avanza solo al dormir).
 #define PHANTOM_TIME_PROLOGUE  0
@@ -548,20 +555,18 @@ git commit -m "feat: VAR_PHANTOM_TIME (reloj narrativo) + helper gdb-read"
 > Enuncia "aquí no se guarda gratis". Se elimina la entrada SAVE del start menu; el guardado por script (camas/altar) queda para cuando existan mapas. Verificación: build + boot smoke sin regresión, y aserción de que el array de acciones ya no contiene SAVE.
 
 **Files:**
-- Modify: `src/start_menu.c` (quitar la línea que añade la acción SAVE en `BuildStartMenuActions*`, ~línea 334 según auditoría)
+- Modify: `src/start_menu.c:334` (quitar `AddStartMenuAction(MENU_ACTION_SAVE);` en `BuildStartMenuActions`)
+- Modify: `include/start_menu.h` (declarar el helper de test)
 - Test: aserción en `src/phantom_test.c`
 
 **Interfaces:**
 - Consumes: harness Task 3.
-- Produces: el start menu construido en juego normal no incluye `MENU_ACTION_SAVE`.
+- Produces: el start menu de campo (`BuildStartMenuActions`, `start_menu.c:276`) no incluye `MENU_ACTION_SAVE`. Símbolos verificados: array `sCurrentStartMenuActions[9]` (`start_menu.c:85`), contador `sNumStartMenuActions`, helper `AddStartMenuAction(u8)` (`:310`), constante `MENU_ACTION_SAVE` (`:58`).
 
-- [ ] **Step 1: localizar la construcción del menú (lectura)**
+- [ ] **Step 1: confirmar la construcción del menú (ya verificado)**
 
-Run:
-```bash
-grep -n "MENU_ACTION_SAVE\|AddStartMenuAction\|BuildStartMenuActions\|sCurrentStartMenuActions\|sNumStartMenuActions" src/start_menu.c | head -30
-```
-Expected: identifica dónde se añade `MENU_ACTION_SAVE` al array de acciones y la variable de conteo. Anota los símbolos reales.
+Run: `sed -n '310,336p' src/start_menu.c`
+Expected: `BuildStartMenuActions` (empieza en :276) añade acciones con `AddStartMenuAction(...)`; la línea **`start_menu.c:334`** es `AddStartMenuAction(MENU_ACTION_SAVE);`. El array es `sCurrentStartMenuActions` y el contador `sNumStartMenuActions`.
 
 - [ ] **Step 2: escribir la aserción que FALLA**
 
@@ -586,34 +591,37 @@ Regístralo en `PhantomTest_Run`.
 
 - [ ] **Step 3: implementar el helper de test en `src/start_menu.c`**
 
-Al final del archivo:
+Al final del archivo (nombres ya verificados: `BuildStartMenuActions`, `sCurrentStartMenuActions`, `sNumStartMenuActions`, `MENU_ACTION_SAVE`):
 ```c
 #ifdef PHANTOM_TEST
 bool8 PhantomTest_StartMenuHasSave(void)
 {
     u32 i;
-    BuildStartMenuActions();   // usa el nombre real hallado en el Step 1
-    for (i = 0; i < sNumStartMenuActions; i++)   // nombres reales del Step 1
+    BuildStartMenuActions();
+    for (i = 0; i < sNumStartMenuActions; i++)
         if (sCurrentStartMenuActions[i] == MENU_ACTION_SAVE)
             return TRUE;
     return FALSE;
 }
 #endif
 ```
-(Ajusta nombres a los reales. Si `BuildStartMenuActions` depende de contexto de mapa, en el test basta con llamar la variante que arma el menú de campo estándar.)
+(`BuildStartMenuActions` arma el menú de campo estándar leyendo flags de sistema; en el test corre con el estado por defecto, suficiente para verificar la ausencia de SAVE.)
 
 - [ ] **Step 4: correr el smoke test y verlo FALLAR**
 
 Run: `./test/smoke.sh`
 Expected: `:P FAIL no-save-in-startmenu` (SAVE aún se añade).
 
-- [ ] **Step 5: quitar la entrada SAVE (`src/start_menu.c`)**
+- [ ] **Step 5: quitar la entrada SAVE (`src/start_menu.c:334`)**
 
-En la función que arma las acciones de campo, elimina (o comenta) la línea que añade la acción de guardar:
+En `BuildStartMenuActions`, comenta la línea 334:
 ```c
+    AddStartMenuAction(MENU_ACTION_PLAYER);
     // Pokémon Phantom: sin guardado desde el menú; solo diegético (camas/altar).
-    // AddStartMenuAction(MENU_ACTION_SAVE);   // <-- línea real del Step 1, eliminada
+    // AddStartMenuAction(MENU_ACTION_SAVE);
+    AddStartMenuAction(MENU_ACTION_OPTION);
 ```
+(El array `sCurrentStartMenuActions[9]` sigue sobrado de tamaño; no hace falta tocar nada más.)
 
 - [ ] **Step 6: correr el smoke test (debe PASAR) + release limpio**
 
@@ -635,20 +643,18 @@ git commit -m "feat: guardado diegetico (quitar SAVE del menu de inicio)"
 
 **Files:**
 - Modify: `src/new_game.c` (`NewGameInitData`: llamar `DisableWildEncounters(TRUE)`)
-- Modify: `include/wild_encounter.h` (declarar `DisableWildEncounters` si no está expuesta)
+- Modify: `src/wild_encounter.c` (helper de test `PhantomTest_WildEncountersDisabled`)
+- Modify: `include/wild_encounter.h` (declarar el helper de test bajo `#ifdef PHANTOM_TEST`)
 - Test: aserción en `src/phantom_test.c`
 
 **Interfaces:**
-- Consumes: `DisableWildEncounters(bool8)` (`src/wild_encounter.c:77-79`), `StandardWildEncounter`/`GetCurrentMapWildMonHeaderId` path.
+- Consumes: `void DisableWildEncounters(bool8 disabled)` (declarada en `include/wild_encounter.h:31`, def. `src/wild_encounter.c:77`), flag `static u8 sWildEncountersDisabled` (`:62`, chequeado en `:557`).
 - Produces: partida nueva arranca con encuentros salvajes desactivados globalmente.
 
-- [ ] **Step 1: verificar la firma y exposición del toggle (lectura)**
+- [ ] **Step 1: confirmar la firma y el flag (ya verificado)**
 
-Run:
-```bash
-grep -n "DisableWildEncounters\|sWildEncountersDisabled" src/wild_encounter.c include/wild_encounter.h
-```
-Expected: confirma `void DisableWildEncounters(bool8 state)` y si está declarada en el header. Anota.
+Run: `grep -n "DisableWildEncounters\|sWildEncountersDisabled" src/wild_encounter.c include/wild_encounter.h`
+Expected: `include/wild_encounter.h:31: void DisableWildEncounters(bool8 disabled);` (ya expuesta — no hay que declararla), `src/wild_encounter.c:62` el flag `static u8 sWildEncountersDisabled`, `:77` la def., `:557` el chequeo `if (sWildEncountersDisabled == TRUE)`.
 
 - [ ] **Step 2: exponer un lector para el test**
 
