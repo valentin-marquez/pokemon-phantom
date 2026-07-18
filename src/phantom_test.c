@@ -7,7 +7,6 @@
 #include "new_game.h"
 #include "main.h"
 #include "save.h"
-#include "constants/pokemon.h" // MALE/FEMALE
 
 u8 gPhantomTestFailed = 0;
 
@@ -31,8 +30,16 @@ static void Test_BootOk(void)
 // Test 1 (Task 4): el Forastero es fijo (masculino, sin nombre editable).
 static void Test_NewGameProtagonist(void)
 {
+    // Ensucia los campos ANTES para que las aserciones fallen (RED real)
+    // si NewGameInitData no fija el protagonista.
+    // EOS (0xFF) no está en scope en este archivo (no se incluye
+    // constants/characters.h por esta cadena de headers); se usa el literal
+    // directamente, que es el terminador de string estándar del juego.
+    gSaveBlock2Ptr->playerGender = FEMALE;
+    gSaveBlock2Ptr->playerName[0] = 0xFF;   // nombre vacío (EOS)
     NewGameInitData();
     PHANTOM_ASSERT(gSaveBlock2Ptr->playerGender == MALE, "protagonist-male");
+    PHANTOM_ASSERT(gSaveBlock2Ptr->playerName[0] != 0xFF, "protagonist-name-set");
 }
 
 void PhantomTest_Run(void)
