@@ -475,11 +475,16 @@ Expected: `include/constants/vars.h:98: #define VAR_UNUSED_0x404E 0x404E // Unus
 #define VAR_PHANTOM_TIME   VAR_UNUSED_0x404E
 
 // Franjas narrativas (el tiempo avanza solo al dormir).
-#define PHANTOM_TIME_PROLOGUE  0
-#define PHANTOM_TIME_DAY1      1
-#define PHANTOM_TIME_DAY2      2
-#define PHANTOM_TIME_DAY3      3
-#define PHANTOM_TIME_DAWN      4
+// 0 = reloj sin arrancar. Importante: InitEventData (dentro de NewGameInitData)
+// pone TODAS las vars a 0, así que el estado por defecto de una partida es UNSET;
+// NewGameInitData debe fijar explícitamente PROLOGUE. Por eso PROLOGUE != 0
+// (si fuera 0, la aserción del test sería tautológica: 0 tras el zero-init).
+#define PHANTOM_TIME_UNSET     0
+#define PHANTOM_TIME_PROLOGUE  1
+#define PHANTOM_TIME_DAY1      2
+#define PHANTOM_TIME_DAY2      3
+#define PHANTOM_TIME_DAY3      4
+#define PHANTOM_TIME_DAWN      5
 
 #endif // GUARD_CONSTANTS_PHANTOM_H
 ```
@@ -504,7 +509,7 @@ Regístralo en `PhantomTest_Run` entre `Test_NewGameProtagonist()` y `suite-end`
 - [ ] **Step 4: correr el smoke test y verlo FALLAR**
 
 Run: `./test/smoke.sh`
-Expected: `:P FAIL phantom-time-prologue` (la var arranca en 0 por el clear del save, pero el test valida que la init la fija explícitamente; si pasa por casualidad al ser 0, cámbiala en el Step 5 y verás la relación causal). Confirma que el checkpoint aparece.
+Expected: `:P FAIL phantom-time-prologue`. RED **real**: sin la línea del Step 5, `NewGameInitData`→`InitEventData` deja `VAR_PHANTOM_TIME` en 0 (`PHANTOM_TIME_UNSET`), que **no** es `PHANTOM_TIME_PROLOGUE` (1) → la aserción falla. (Por eso PROLOGUE=1 y no 0; ver el comentario en `phantom.h`.)
 
 - [ ] **Step 5: inicializar la variable en `NewGameInitData` (`src/new_game.c`)**
 
