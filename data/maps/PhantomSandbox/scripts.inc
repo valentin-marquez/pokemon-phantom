@@ -18,6 +18,7 @@ PhantomSandbox_EventScript_MiniScene::
 	fadescreen FADE_TO_BLACK
 	special PhantomMarkExecutionSeen
 	setflag FLAG_PHANTOM_MEOWTH_EXECUTED
+	special PhantomReloadOverworldPalettes
 	delay 60
 	fadescreen FADE_FROM_BLACK
 	releaseall

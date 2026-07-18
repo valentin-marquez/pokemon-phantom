@@ -9,6 +9,7 @@
 #include "mirage_tower.h"
 #include "overworld.h"
 #include "palette.h"
+#include "phantom.h"
 #include "pokenav.h"
 #include "script.h"
 #include "secret_base.h"
@@ -862,9 +863,11 @@ static void CopyTilesetToVramUsingHeap(struct Tileset const *tileset, u16 numTil
 }
 
 // Below two are dummied functions from FRLG, used to tint the overworld palettes for the Quest Log
+// Pokémon Phantom: reutilizado para la desaturación permanente del overworld
+// tras la ejecución de Meowth (Fase 5). Ver Phantom_TintPaletteRange.
 static void ApplyGlobalTintToPaletteEntries(u16 offset, u16 size)
 {
-
+    Phantom_TintPaletteRange(offset, size);
 }
 
 static void UNUSED ApplyGlobalTintToPaletteSlot(u8 slot, u8 count)
