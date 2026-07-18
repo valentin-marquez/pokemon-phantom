@@ -46,6 +46,7 @@
 #include "mystery_gift.h"
 #include "union_room_chat.h"
 #include "constants/items.h"
+#include "constants/phantom.h"
 
 extern const u8 EventScript_ResetAllMapFlags[];
 
@@ -201,6 +202,8 @@ void NewGameInitData(void)
     // Pokémon Phantom: el Forastero es fijo (masculino, sin nombre editable).
     gSaveBlock2Ptr->playerGender = MALE;
     StringCopy(gSaveBlock2Ptr->playerName, gText_PhantomPlayerName);
+    // Pokémon Phantom: el reloj narrativo arranca en el prólogo.
+    VarSet(VAR_PHANTOM_TIME, PHANTOM_TIME_PROLOGUE);
     WarpToTruck();
     RunScriptImmediately(EventScript_ResetAllMapFlags);
     ResetMiniGamesRecords();

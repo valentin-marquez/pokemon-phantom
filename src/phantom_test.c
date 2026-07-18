@@ -7,6 +7,8 @@
 #include "new_game.h"
 #include "main.h"
 #include "save.h"
+#include "event_data.h"
+#include "constants/phantom.h"
 
 u8 gPhantomTestFailed = 0;
 
@@ -42,6 +44,13 @@ static void Test_NewGameProtagonist(void)
     PHANTOM_ASSERT(gSaveBlock2Ptr->playerName[0] != 0xFF, "protagonist-name-set");
 }
 
+// Test 2 (Task 5): el reloj narrativo arranca en PROLOGUE tras New Game.
+static void Test_PhantomTimeInit(void)
+{
+    NewGameInitData();
+    PHANTOM_ASSERT(VarGet(VAR_PHANTOM_TIME) == PHANTOM_TIME_PROLOGUE, "phantom-time-prologue");
+}
+
 void PhantomTest_Run(void)
 {
     PHANTOM_CHECKPOINT("suite-start");
@@ -51,6 +60,7 @@ void PhantomTest_Run(void)
     PHANTOM_CHECKPOINT("before-newgame");
     Test_NewGameProtagonist();
     PHANTOM_CHECKPOINT("after-newgame");
+    Test_PhantomTimeInit();
     PHANTOM_CHECKPOINT("suite-end");
     PhantomTest_Finish(gPhantomTestFailed);
 }
