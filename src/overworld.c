@@ -1539,10 +1539,14 @@ void CB2_NewGame(void)
     PlayTimeCounter_Start();
     ScriptContext_Init();
     UnlockPlayerFieldControls();
-    // Pokémon Phantom: temporary sandbox redirect (Task 4 slice). The truck
-    // cutscene doesn't apply since New Game now warps into the sandbox map;
-    // use the plain warp-exit fade instead. Revert once the real intro exists.
+    // Pokémon Phantom: redirect del sandbox SOLO en la ROM _debug (Task 4 slice).
+    // En _debug New Game warpea al sandbox, así que se usa el fade de salida en
+    // vez de la cutscene del camión. Gateado para dejar el release vanilla.
+#ifdef PHANTOM_DEBUG_BOOT
     gFieldCallback = FieldCB_WarpExitFadeFromBlack;
+#else
+    gFieldCallback = ExecuteTruckSequence;
+#endif
     gFieldCallback2 = NULL;
     DoMapLoadLoop(&gMain.state);
     SetFieldVBlankCallback();
