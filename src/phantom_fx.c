@@ -92,6 +92,54 @@ static void SetupMareoScanline(void)
     gScanlineEffect.state = 1;
 }
 
+// Rellena un buffer de scanline con la onda: HOFS = scroll de cámara + seno,
+// VOFS = scroll sin tocar. Lee el scroll vivo cada frame.
+// Nota (over-read benigno): la DMA lee 6 halfwords por la HBlank posterior a la
+// línea 159 (la línea 160, fuera de pantalla) → lee 6 halfwords más allá del
+// buffer usado. En GBA es inofensivo (EWRAM no falla, línea invisible, se
+// corrige al frame siguiente); por eso NO rellenamos una línea extra (el buffer
+// gScanlineEffectRegBuffers[2][0x3C0] cabe justo 6×160).
+static void FillMareoScanlineBuffer(u16 *buf)
+{
+    s16 bg1h = GetGpuReg(REG_OFFSET_BG1HOFS);
+    s16 bg1v = GetGpuReg(REG_OFFSET_BG1VOFS);
+    s16 bg2h = GetGpuReg(REG_OFFSET_BG2HOFS);
+    s16 bg2v = GetGpuReg(REG_OFFSET_BG2VOFS);
+    s16 bg3h = GetGpuReg(REG_OFFSET_BG3HOFS);
+    s16 bg3v = GetGpuReg(REG_OFFSET_BG3VOFS);
+    u32 line;
+
+    for (line = 0; line < DISPLAY_HEIGHT; line++)
+    {
+        u8 theta = (line * MAREO_FREQUENCY + sMareoPhase) & 0xFF;
+        s16 wave = (gSineTable[theta] * sMareoAmplitude) >> 8;
+        u32 o = line * MAREO_REGS_PER_LINE;
+
+        buf[o + 0] = bg1h + wave;
+        buf[o + 1] = bg1v;
+        buf[o + 2] = bg2h + wave;
+        buf[o + 3] = bg2v;
+        buf[o + 4] = bg3h + wave;
+        buf[o + 5] = bg3v;
+    }
+}
+
+// Apaga SOLO el task del mareo (mata el task + deshace el x2 de los sprites),
+// sin tocar el sistema de scanline. Se usa al entrar a un mapa con flash: ahí
+// el flash ya montó el scanline y NO debemos pisarlo (romperíamos la cueva).
+static void TeardownMareoTask(void)
+{
+    u8 taskId = FindTaskIdByFunc(Task_PhantomMareo);
+    u32 i;
+
+    if (taskId != TASK_NONE)
+        DestroyTask(taskId);
+    sMareoActive = FALSE;
+    for (i = 0; i < OBJECT_EVENTS_COUNT; i++)
+        if (gObjectEvents[i].active)
+            gSprites[gObjectEvents[i].spriteId].x2 = 0;
+}
+
 // Núcleo: monta el efecto (respeta el flash; NO chequea la flag). Aplica los
 // defaults si amplitud/velocidad no se han fijado por script. Idempotente:
 // re-arma el scanline y crea el task solo si no existe ya (robusto ante
@@ -106,11 +154,15 @@ static void StartMareoCore(void)
         sMareoSpeed = MAREO_DEFAULT_SPEED;
 
     SetupMareoScanline();
+    // Prefill ambos buffers para que el primer frame no muestre offset (0,0)
+    // (ScanlineEffect_Clear los dejó a cero; sin esto habría un tirón de 1 frame
+    // al arrancar en el sitio, con la pantalla visible).
+    FillMareoScanlineBuffer(gScanlineEffectRegBuffers[0]);
+    FillMareoScanlineBuffer(gScanlineEffectRegBuffers[1]);
+    // La fase NO se resetea: persiste en .bss → la onda sigue derivando de forma
+    // continua entre mapas (nada de "pop" al re-armar tras un warp).
     if (FindTaskIdByFunc(Task_PhantomMareo) == TASK_NONE)
-    {
-        sMareoPhase = 0;
         CreateTask(Task_PhantomMareo, 0);
-    }
     sMareoActive = TRUE;
 }
 
@@ -129,7 +181,7 @@ void PhantomFx_OnMapLoad(void)
     if (FlagGet(FLAG_PHANTOM_MEOWTH_EXECUTED) && GetFlashLevel() == 0)
         StartMareoCore();
     else if (sMareoActive)
-        PhantomFx_StopMareo();
+        TeardownMareoTask();   // entrando a cueva/flash: NO tocar el scanline (lo usa el flash)
 }
 
 // Special para scripts:
@@ -140,6 +192,8 @@ void PhantomFx_OnMapLoad(void)
 // parado, arranca. No exige la flag (para tunear o usarlo en otros momentos).
 void PhantomMareoOn(void)
 {
+    // Amplitud/velocidad son u8 (0-255); valores mayores en la var se truncan.
+    // Rango útil real: amplitud ~1-10, velocidad ~1-6.
     sMareoAmplitude = gSpecialVar_0x8004;
     sMareoSpeed = gSpecialVar_0x8005;
     StartMareoCore();
@@ -151,45 +205,17 @@ void PhantomMareoOff(void)
     PhantomFx_StopMareo();
 }
 
+// Apagado explícito (special PhantomMareoOff): además de matar el task, libera
+// el scanline (aquí sí, porque lo apagamos a propósito en un mapa normal).
 void PhantomFx_StopMareo(void)
 {
-    u8 taskId = FindTaskIdByFunc(Task_PhantomMareo);
-    u32 i;
-
-    if (taskId != TASK_NONE)
-        DestroyTask(taskId);
-    sMareoActive = FALSE;
-    // Deshacer el desplazamiento de los sprites del overworld.
-    for (i = 0; i < OBJECT_EVENTS_COUNT; i++)
-        if (gObjectEvents[i].active)
-            gSprites[gObjectEvents[i].spriteId].x2 = 0;
+    TeardownMareoTask();
     ScanlineEffect_Stop();
 }
 
 static void Task_PhantomMareo(u8 taskId)
 {
-    s16 bg1h = GetGpuReg(REG_OFFSET_BG1HOFS);
-    s16 bg1v = GetGpuReg(REG_OFFSET_BG1VOFS);
-    s16 bg2h = GetGpuReg(REG_OFFSET_BG2HOFS);
-    s16 bg2v = GetGpuReg(REG_OFFSET_BG2VOFS);
-    s16 bg3h = GetGpuReg(REG_OFFSET_BG3HOFS);
-    s16 bg3v = GetGpuReg(REG_OFFSET_BG3VOFS);
-    u16 *buf = gScanlineEffectRegBuffers[gScanlineEffect.srcBuffer];
-    u32 line;
-
-    for (line = 0; line < DISPLAY_HEIGHT; line++)
-    {
-        u8 theta = (line * MAREO_FREQUENCY + sMareoPhase) & 0xFF;
-        s16 wave = (gSineTable[theta] * sMareoAmplitude) >> 8;
-        u32 o = line * MAREO_REGS_PER_LINE;
-
-        buf[o + 0] = bg1h + wave;
-        buf[o + 1] = bg1v;
-        buf[o + 2] = bg2h + wave;
-        buf[o + 3] = bg2v;
-        buf[o + 4] = bg3h + wave;
-        buf[o + 5] = bg3v;
-    }
+    FillMareoScanlineBuffer(gScanlineEffectRegBuffers[gScanlineEffect.srcBuffer]);
 
     // Los sprites (jugador, NPCs, objetos) viven en la capa OBJ, que la onda de
     // scanline no toca. Para que también "ondulen", desplazamos cada sprite del
