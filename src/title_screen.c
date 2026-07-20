@@ -22,6 +22,7 @@
 #include "constants/songs.h"
 
 #include "minigame_ship.h"
+#include "phantom_intro.h"
 
 // Al inicio del archivo, podemos agregar defines para la posición
 #define PRESS_START_X 86 // Posición X central
@@ -528,9 +529,7 @@ static void Task_TitleScreenMain(u8 taskId)
     // Handle input to start the game here instead of destroying the task.
     if (JOY_NEW(A_BUTTON) || JOY_NEW(START_BUTTON))
     {
-        FadeOutBGM(4);
-        BeginNormalPaletteFade(PALETTES_ALL, 0, 0, 16, RGB_WHITEALPHA);
-        SetMainCallback2(CB2_TaskFadeOutToMinigame);
+        PhantomIntro_OnStartPressed();
     }
 }
 
