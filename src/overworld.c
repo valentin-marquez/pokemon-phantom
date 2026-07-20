@@ -38,6 +38,7 @@
 #include "money.h"
 #include "new_game.h"
 #include "palette.h"
+#include "phantom.h"
 #include "play_time.h"
 #include "random.h"
 #include "roamer.h"
@@ -1812,6 +1813,10 @@ static void InitCurrentFlashLevelScanlineEffect(void)
         WriteFlashScanlineEffectBuffer(flashLevel);
         ScanlineEffect_SetParams(sFlashEffectParams);
     }
+    // Pokémon Phantom: re-armar el mareo tras la ejecución en cada carga de
+    // mapa (persistencia entre warps). En mapas sin flash toma el scanline libre;
+    // en cuevas (flash arriba) se auto-desactiva. Ver src/phantom_fx.c.
+    PhantomFx_OnMapLoad();
 }
 
 static bool32 LoadMapInStepsLink(u8 *state)

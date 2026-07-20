@@ -82,6 +82,26 @@ El tinte DEBE vivir en `gPlttBufferUnfaded` (fade y clima leen de unfaded y re-e
 - **Flag:** renombrar `FLAG_UNUSED_0x020` (`flags.h:46`) a `FLAG_PHANTOM_MEOWTH_EXECUTED` (persistente). NO `FLAG_TEMP_*` (se resetean por mapa), NO gatear por `VAR_PHANTOM_TIME` (vale DAY1 todo el día → desaturaría desde el amanecer).
 - **Look elegido (jul 2026, validado por captura, revisado con Valentin):** desaturación **sesgada a rojizo enfermizo** (no verde ni gris neutro). Fórmula en `src/phantom.c` `Phantom_TintPaletteRange`: gris de luminancia, luego tono `tr=gray*18/16 (clamp 31), tg=tb=gray*11/16`, mezcla ~62% (3/8 original + 5/8 tono) — marcado pero legible. (Se probaron y descartaron por captura: verde "luna mala", azul frío, rojo leve, sangre oscuro, óxido.) **Pendiente futuro:** un efecto de "mareo"/distorsión de lente (onda scanline vía `ScanlineEffect_InitWave`) sobre el overworld, que siga el scroll y se pause con la caja de texto. Verificado en el sandbox: menús/UI NO se desaturan (el tinte no toca el `LoadPalette` global). El special `PhantomReloadOverworldPalettes` (`LoadMapTilesetPalettes(gMapHeader.mapLayout)`) fuerza que el efecto se vea al instante tras el `setflag`, sin necesitar un warp.
 
+## Regla de oro de los efectos: NUNCA tocar la UI/menú
+
+Verificado (jul 2026): en el overworld el **mapa se dibuja en BG1/BG2/BG3** (prioridades 1-3) y el **texto/menús en BG0** (prioridad 0, encima). Los **sprites** de object-event (jugador/NPCs) van en la capa OBJ; el **cursor/UI del menú** son OTROS sprites OBJ.
+
+Todo efecto (tinte, mareo, glitches futuros) DEBE:
+- Distorsionar/teñir solo **BG1/2/3** (mapa) — nunca BG0 (texto).
+- Sobre sprites, actuar solo en las paletas/posiciones de los **object-event** del overworld (iterar `gObjectEvents[]`), **nunca** en todas las paletas OBJ (teñir las 16 pisa el cursor/UI del menú — comprobado). Dedup por `oam.paletteNum` para no teñir dos veces.
+- El tinte BG solo se aplica en `LoadTilesetPalette` (mapa), no en el `LoadPalette` de las ventanas de texto → el menú no se tiñe.
+
+Efecto de mareo (`src/phantom_fx.c`): onda de seno por scanline sobre los HOFS de BG1/2/3 (HBlank-DMA de 6 registros, siguiendo el scroll de cámara), + desplazamiento en `x2` de los sprites de object-event según la onda a su altura. Solo en mapas sin flash (en cuevas el flash usa el scanline). El texto/menú (BG0 + sprites de UI) quedan intactos por construcción.
+
+**Control por script (amplitud/velocidad ajustables en vivo):**
+```
+setvar VAR_0x8004, <amplitud>    @ px (0 = default 3)
+setvar VAR_0x8005, <velocidad>   @ avance de fase/frame (0 = default 2)
+special PhantomMareoOn            @ arranca/actualiza; NO exige la flag
+special PhantomMareoOff           @ apaga
+```
+El arranque automático tras la ejecución del Meowth (`PhantomFx_StartMareo`, llamado desde `PhantomReloadOverworldPalettes`) sí está gateado por `FLAG_PHANTOM_MEOWTH_EXECUTED` y usa los defaults. `PhantomMareoOn` sirve para otros momentos turbios (pesadillas, visiones). PENDIENTE de producción: enganchar el arranque persistente a la carga de mapa (para que sobreviva a los warps), gateado a mapas sin flash.
+
 ## Fase 6 — Tests headless
 El harness (`src/phantom_test.c`) llama funciones C directas: `fadescreen`/`SaveGame`/`waitstate` NO son ejercitables headless (gap conocido). Sí aseverable: mutación determinista (`VarSet`/`FlagSet`) → poner la lógica en los specials C reusables y testearlos:
 ```c

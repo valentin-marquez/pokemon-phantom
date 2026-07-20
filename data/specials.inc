@@ -11,6 +11,8 @@ gSpecials::
 	def_special PhantomAdvanceDay
 	def_special PhantomMarkExecutionSeen
 	def_special PhantomReloadOverworldPalettes
+	def_special PhantomMareoOn
+	def_special PhantomMareoOff
 	def_special HealPlayerParty
 	def_special SetCableClubWarp
 	def_special DoCableClubWarp

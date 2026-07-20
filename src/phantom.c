@@ -57,7 +57,12 @@ void Phantom_TintPaletteRange(u16 offset, u16 count)
 
 // Fuerza la recarga de las paletas del tileset del mapa actual para que el
 // tinte se vea de inmediato tras encender la flag, sin esperar a un warp.
+// También arranca el efecto de mareo en el sitio (sin esperar a un warp).
 void PhantomReloadOverworldPalettes(void)
 {
     LoadMapTilesetPalettes(gMapHeader.mapLayout);
+    // Re-teñir SOLO las paletas OBJ de los sprites del overworld (jugador/NPCs
+    // ya cargados) — NO las de la UI/menú (ver PhantomFx_RetintObjectSprites).
+    PhantomFx_RetintObjectSprites();
+    PhantomFx_StartMareo();
 }
