@@ -40,7 +40,7 @@ static const struct OamData sOam_Crack = {
     .size = SPRITE_SIZE(64x64),
     .priority = 0,
 };
-static const struct SpriteSheet sSheet_Crack = { sCrackGfx, 64 * 64 / 2, TAG_CRACK };
+static const struct SpriteSheet sSheet_Crack = { sCrackGfx, 64 * (64 * 12) / 2, TAG_CRACK };
 static const struct SpritePalette sPal_Crack = { sCrackPal, TAG_CRACK };
 static const struct SpriteTemplate sTmpl_Crack = {
     .tileTag = TAG_CRACK, .paletteTag = TAG_CRACK, .oam = &sOam_Crack,
@@ -48,21 +48,24 @@ static const struct SpriteTemplate sTmpl_Crack = {
     .affineAnims = gDummySpriteAffineAnimTable, .callback = SpriteCallbackDummy,
 };
 
-// Cluster de copias del mismo sprite de grieta, radiando desde el centro real
-// de pantalla (120,80), para un impacto dramático casi a pantalla completa en
-// vez de un único sprite 64x64 chico. Todas comparten el mismo tile/paleta
-// (TAG_CRACK): son CreateSprite adicionales sobre la MISMA hoja ya cargada,
-// no un LoadSpriteSheet por copia -- no hay fuga ni costo extra de VRAM de
-// tiles, solo NUM_CRACKS entradas de OAM (bien por debajo del máximo de 64).
-#define NUM_CRACKS 5
-#define CRACK_OFFSET 56   // px de las copias diagonales respecto al centro
+// UNA sola grieta de impacto (telaraña conectada desde el centro real de
+// pantalla, 120,80), rebanada en una rejilla de 4 columnas x 3 filas de
+// sprites 64x64 para cubrir los 240x160 completos (un GBA sprite no puede
+// pasar de 64x64). graphics/phantom_intro/gen.py pinta el motivo completo en
+// un lienzo full-screen y lo corta en estas mismas 12 celdas -- las
+// coordenadas de centro de abajo DEBEN coincidir con GRID_COLS/GRID_ROWS de
+// gen.py. Todas las celdas comparten la misma hoja/paleta ya cargada
+// (TAG_CRACK): son CreateSprite adicionales sobre tiles ya en VRAM, cada uno
+// leyendo su propio bloque de 64 tiles contiguos vía oam.tileNum += K*64
+// (mismo patrón ya usado para los sprites del menú, ver MENU_TILE_* abajo).
+#define NUM_CRACKS 12
+#define CRACK_TILES_PER_CELL 64   // 64x64 px = 8x8 tiles = 64 tiles 4bpp
 
-static const s16 sCrackOffsets[NUM_CRACKS][2] = {
-    {              0,               0 },  // centro
-    { -CRACK_OFFSET, -CRACK_OFFSET },     // arriba-izquierda
-    {  CRACK_OFFSET, -CRACK_OFFSET },     // arriba-derecha
-    { -CRACK_OFFSET,  CRACK_OFFSET },     // abajo-izquierda
-    {  CRACK_OFFSET,  CRACK_OFFSET },     // abajo-derecha
+static const s16 sCrackCellPos[NUM_CRACKS][2] = {
+    //   x,   y  (centro de sprite; ver CreateSprite/CalcCenterToCornerVec)
+    {  32,  32 }, {  96,  32 }, { 160,  32 }, { 208,  32 },   // fila 0
+    {  32,  96 }, {  96,  96 }, { 160,  96 }, { 208,  96 },   // fila 1
+    {  32, 144 }, {  96, 144 }, { 160, 144 }, { 208, 144 },   // fila 2
 };
 
 static bool8 sCrackShown;
@@ -148,8 +151,11 @@ static void Task_PhantomGlass(u8 taskId)
                 u32 i;
                 for (i = 0; i < NUM_CRACKS; i++)
                 {
-                    sCrackSpriteIds[i] = CreateSprite(&sTmpl_Crack,
-                        120 + sCrackOffsets[i][0], 80 + sCrackOffsets[i][1], 0);  // 120,80 = centro de 240x160
+                    u8 id = CreateSprite(&sTmpl_Crack,
+                        sCrackCellPos[i][0], sCrackCellPos[i][1], 0);
+                    if (id != MAX_SPRITES)
+                        gSprites[id].oam.tileNum += i * CRACK_TILES_PER_CELL;
+                    sCrackSpriteIds[i] = id;
                 }
             }
             sCrackShown = TRUE;
