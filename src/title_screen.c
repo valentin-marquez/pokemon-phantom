@@ -464,6 +464,7 @@ void CB2_InitTitleScreen(void)
 
         sCloudHorizontalOffset = 0;
         sCloudScrollDelay = 0;
+        sPressStartHidden = FALSE;
 
         DmaFill16(3, 0, (void *)VRAM, VRAM_SIZE);
         DmaFill32(3, 0, (void *)OAM, OAM_SIZE);

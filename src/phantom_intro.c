@@ -106,9 +106,17 @@ static void Task_PhantomGlass(u8 taskId)
         s32 amp = GLASS_SHAKE_MAX - (sGlassTimer * GLASS_SHAKE_MAX / GLASS_SHAKE_FRAMES);
         s32 dx = (sGlassTimer & 1) ? amp : -amp;
         s32 dy = (sGlassTimer & 2) ? amp : -amp;
+        // BG3 (estrellas, la capa más al fondo) NUNCA recibe HOFS != 0: su
+        // tilemap solo cubre el área visible en horizontal, y CUALQUIER
+        // desplazamiento horizontal (positivo o negativo) envuelve a una
+        // columna de tiles sin autoría en el borde opuesto (se ve como un
+        // tirón rojo sólido -- verificado barriendo BG0HOFS/BG2HOFS/BG3HOFS
+        // en -3..+3 con capturas: solo BG3 lo produce, y en ambos signos).
+        // El VOFS vertical de BG3 sí es seguro en todo el rango. BG0/BG2
+        // toleran HOFS y VOFS en cualquier signo (probado, sin artefacto).
         SetGpuReg(REG_OFFSET_BG0HOFS, dx);   SetGpuReg(REG_OFFSET_BG0VOFS, dy);
         SetGpuReg(REG_OFFSET_BG2HOFS, dx);   SetGpuReg(REG_OFFSET_BG2VOFS, dy);
-        SetGpuReg(REG_OFFSET_BG3HOFS, dx);   SetGpuReg(REG_OFFSET_BG3VOFS, dy);
+        SetGpuReg(REG_OFFSET_BG3HOFS, 0);    SetGpuReg(REG_OFFSET_BG3VOFS, dy);
         if (sGlassTimer >= GLASS_SHAKE_FRAMES)
         {
             SetGpuReg(REG_OFFSET_BG0HOFS, 0); SetGpuReg(REG_OFFSET_BG0VOFS, 0);
@@ -116,6 +124,7 @@ static void Task_PhantomGlass(u8 taskId)
             SetGpuReg(REG_OFFSET_BG3HOFS, 0); SetGpuReg(REG_OFFSET_BG3VOFS, 0);
             sCrackSpriteId = CreateSprite(&sTmpl_Crack, 120, 80, 0);  // centro de 240x160
             sCrackShown = TRUE;
+            PlaySE(SE_ICE_CRACK);   // el propio crujido, justo cuando aparecen las grietas
             sGlassPhase = 2;
             sGlassTimer = 0;
         }
@@ -169,12 +178,18 @@ static const u16 sMenuPal[] = INCBIN_U16("graphics/phantom_intro/menu.gbapal");
 // OJO: CreateSprite posiciona por el CENTRO del sprite, no por la esquina
 // superior izquierda (ver CalcCenterToCornerVec en src/sprite.c) -- estas
 // constantes son coordenadas de CENTRO.
+// El logo PHANTOM (BG0) llega hasta ~y=102 en su serifa más baja (columna
+// central, cerca de la "M"); estas Y se corrieron hacia abajo respecto al
+// primer intento (108/140) porque a esa altura la línea "NUEVA" pisaba esa
+// serifa (ver docs/design/captures/t4_menu.png). Con estos valores el bloque
+// "NUEVA"/"PARTIDA" arranca claro del logo y "CONTINUAR" queda en el tercio
+// inferior, sin tocar la línea de arriba.
 #define MENU_LABEL_X   120   // 120 = mitad de los 240px de pantalla (bloques de 64 centrados)
-#define MENU_LABEL0_Y  108   // centro del bloque "NUEVA"/"PARTIDA"
-#define MENU_LABEL1_Y  140   // centro del bloque "CONTINUAR"
+#define MENU_LABEL0_Y  120   // centro del bloque "NUEVA"/"PARTIDA"
+#define MENU_LABEL1_Y  142   // centro del bloque "CONTINUAR"
 #define MENU_CURSOR_X  78    // a la izquierda de las etiquetas
-#define MENU_CURSOR_Y0 100   // alineado con la línea "NUEVA"
-#define MENU_CURSOR_Y1 140   // alineado con "CONTINUAR"
+#define MENU_CURSOR_Y0 112   // alineado con la línea "NUEVA"
+#define MENU_CURSOR_Y1 142   // alineado con "CONTINUAR"
 
 static const struct OamData sOam_MenuLabel = {
     .affineMode = ST_OAM_AFFINE_OFF,

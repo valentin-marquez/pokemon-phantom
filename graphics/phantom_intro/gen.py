@@ -30,23 +30,43 @@ def line(x0, y0, x1, y1, color):
         if e2 > -dy: err -= dy; x0 += sx
         if e2 < dx:  err += dx; y0 += sy
 
-# Grietas radiales desde el centro, con ramas.
-for i in range(9):
-    ang = i * (2 * math.pi / 9) + random.uniform(-0.2, 0.2)
-    length = random.randint(22, 30)
+# Grietas radiales desde el centro, con ramas -- más densas y más largas que
+# el primer intento (9 rayos, 22-30px) para que el impacto se lea como un
+# golpe real y no un motivo chico: ahora llegan casi al borde del sprite
+# 64x64 (algunas se recortan al tocar el borde, lo cual luce bien: imita el
+# vidrio partiéndose hasta el marco).
+NUM_RAYS = 14
+for i in range(NUM_RAYS):
+    ang = i * (2 * math.pi / NUM_RAYS) + random.uniform(-0.2, 0.2)
+    length = random.randint(27, 33)
     ex = int(CX + math.cos(ang) * length)
     ey = int(CY + math.sin(ang) * length)
     line(CX, CY, ex, ey, 1)
-    # rama
-    bang = ang + random.uniform(-0.7, 0.7)
-    blen = random.randint(6, 12)
-    mx = int(CX + math.cos(ang) * length * 0.6)
-    my = int(CY + math.sin(ang) * length * 0.6)
-    line(mx, my, int(mx + math.cos(bang) * blen), int(my + math.sin(bang) * blen), 2)
+    # engrosar el tercio interior del rayo (más creíble como impacto real)
+    perp = ang + math.pi / 2
+    ox, oy = int(math.cos(perp)), int(math.sin(perp))
+    mx0 = int(CX + math.cos(ang) * length * 0.35)
+    my0 = int(CY + math.sin(ang) * length * 0.35)
+    line(CX + ox, CY + oy, mx0 + ox, my0 + oy, 2)
 
-# Anillos concéntricos tenues (grietas circulares).
-for r in (10, 18):
-    for a in range(0, 360, 6):
+    # rama primaria
+    bang = ang + random.uniform(-0.7, 0.7)
+    blen = random.randint(8, 14)
+    mx = int(CX + math.cos(ang) * length * 0.55)
+    my = int(CY + math.sin(ang) * length * 0.55)
+    bex = int(mx + math.cos(bang) * blen)
+    bey = int(my + math.sin(bang) * blen)
+    line(mx, my, bex, bey, 2)
+
+    # rama secundaria, más fina, brotando de la primera (más densidad cerca del borde)
+    b2ang = bang + random.uniform(-0.8, 0.8)
+    b2len = random.randint(4, 9)
+    line(bex, bey, int(bex + math.cos(b2ang) * b2len), int(bey + math.sin(b2ang) * b2len), 3)
+
+# Anillos concéntricos (grietas circulares), incluido uno cerca del borde
+# para reforzar la sensación de impacto que cubre casi todo el sprite.
+for r in (10, 18, 26):
+    for a in range(0, 360, 5):
         x = int(CX + math.cos(math.radians(a)) * r)
         y = int(CY + math.sin(math.radians(a)) * r)
         if 0 <= x < W and 0 <= y < H and random.random() > 0.35:
