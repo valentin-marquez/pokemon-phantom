@@ -30,15 +30,18 @@ def line(x0, y0, x1, y1, color):
         if e2 > -dy: err -= dy; x0 += sx
         if e2 < dx:  err += dx; y0 += sy
 
-# Grietas radiales desde el centro, con ramas -- más densas y más largas que
-# el primer intento (9 rayos, 22-30px) para que el impacto se lea como un
-# golpe real y no un motivo chico: ahora llegan casi al borde del sprite
-# 64x64 (algunas se recortan al tocar el borde, lo cual luce bien: imita el
-# vidrio partiéndose hasta el marco).
-NUM_RAYS = 14
+# Grietas radiales desde el centro, con ramas -- densas y largas para que el
+# impacto se lea como un golpe real y no un motivo chico: llegan casi al
+# borde del sprite 64x64 (algunas se recortan al tocar el borde, lo cual luce
+# bien: imita el vidrio partiéndose hasta el marco). Este mismo motivo se usa
+# en phantom_intro.c en un CLUSTER de copias (mismo tile, distintas
+# posiciones) para el efecto "dramático a pantalla casi completa" -- que cada
+# tile individual llegue bien al borde ayuda a que las copias se lean como
+# una sola red de grietas en vez de 5 rombos sueltos.
+NUM_RAYS = 16
 for i in range(NUM_RAYS):
     ang = i * (2 * math.pi / NUM_RAYS) + random.uniform(-0.2, 0.2)
-    length = random.randint(27, 33)
+    length = random.randint(29, 34)
     ex = int(CX + math.cos(ang) * length)
     ey = int(CY + math.sin(ang) * length)
     line(CX, CY, ex, ey, 1)
@@ -76,13 +79,22 @@ img.save("graphics/phantom_intro/crack.png")
 print("crack.png generado")
 
 # --- menu.png: "NUEVA PARTIDA" / "CONTINUAR" + cursor, fuente 5x7 embebida ---
-# Layout en memoria: pila VERTICAL de 3 bloques, cada uno del ANCHO COMPLETO de
+# Layout en memoria: pila VERTICAL de 4 bloques, cada uno del ANCHO COMPLETO de
 # la hoja (64px). Esto importa: gbagfx parte la imagen en tiles de 8x8 en orden
 # row-major sobre TODA la hoja, no por sprite. Si dos sprites de 64 de ancho
 # fueran lado a lado (p. ej. una hoja de 128x32), sus filas de tiles quedarían
 # intercaladas y el sprite de 1D-mapping saldría con la gráfica descompuesta.
 # Apilando en vertical con el mismo ancho que cada sprite, cada bloque cae en
 # un rango de tiles contiguo y en el orden que un sprite 1D-mapped espera.
+#
+# "NUEVA PARTIDA" (~78px a 6px/char) no entra en un solo sprite de 64px de
+# ancho (máximo GBA), así que la línea se arma con DOS sprites adyacentes en
+# pantalla: bloque 0 = "NUEVA", bloque 1 = "PARTIDA". Ambos textos arrancan
+# con el mismo margen izquierdo (TEXT_MARGIN) dentro de su bloque, y es
+# phantom_intro.c el que los posiciona pegados en X para que se lean como una
+# sola línea continua. El bloque de "CONTINUAR" usa el mismo margen izquierdo
+# que el bloque 0, para que ambas opciones queden alineadas a la izquierda
+# (con el cursor a la izquierda de todo, per diseño).
 FONT = {  # 5x7, filas de bits (1 = pixel encendido)
     'A': [0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11], 'C': [0x0E, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0E],
     'D': [0x1E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1E],
@@ -112,22 +124,29 @@ MENU_W = 64      # ancho de un sprite SPRITE_SIZE(64x32)
 BLOCK_H = 32     # alto de cada bloque de etiqueta (64x32 = 32 tiles)
 CURSOR_H = 8     # alto del bloque del cursor (8x8 = 1 tile)
 
-menu = Image.new("P", (MENU_W, BLOCK_H * 2 + CURSOR_H), 0)
+TEXT_MARGIN = 2  # margen izquierdo dentro de cada bloque (texto en línea, no centrado)
+TEXT_Y = 2       # fila donde arranca el texto, cerca del borde superior del bloque
+                 # (deja el resto del bloque 64x32 transparente -- pegamos el
+                 # texto arriba para poder acercar el sprite al logo sin mover
+                 # más "aire" del que hace falta)
+
+menu = Image.new("P", (MENU_W, BLOCK_H * 3 + CURSOR_H), 0)
 menu.putpalette(palette)  # reutiliza la paleta de crack (1 = blanco)
 
-# Bloque 0 (tiles 0..31): "NUEVA" / "PARTIDA" en dos líneas, centradas.
-text(menu, "NUEVA", 17, 4, 1)
-text(menu, "PARTIDA", 11, 16, 1)
-# Bloque 1 (tiles 32..63): "CONTINUAR", centrada.
-text(menu, "CONTINUAR", 5, BLOCK_H + 12, 1)
-# Bloque 2 (tile 64): cursor '>' suelto, en la esquina superior izquierda de su
+# Bloque 0 (tiles 0..31): "NUEVA" -- mitad izquierda de la línea "NUEVA PARTIDA".
+text(menu, "NUEVA", TEXT_MARGIN, TEXT_Y, 1)
+# Bloque 1 (tiles 32..63): "PARTIDA" -- mitad derecha de la misma línea.
+text(menu, "PARTIDA", TEXT_MARGIN, BLOCK_H + TEXT_Y, 1)
+# Bloque 2 (tiles 64..95): "CONTINUAR", mismo margen izquierdo que el bloque 0.
+text(menu, "CONTINUAR", TEXT_MARGIN, BLOCK_H * 2 + TEXT_Y, 1)
+# Bloque 3 (tile 96): cursor '>' suelto, en la esquina superior izquierda de su
 # propio tile 8x8 (se recorta como sprite aparte y se reposiciona en vivo).
 mp = menu.load()
 for row in range(7):
     bits = FONT['>'][row]
     for col in range(5):
         if bits & (1 << (4 - col)):
-            mp[1 + col, BLOCK_H * 2 + row] = 1
+            mp[1 + col, BLOCK_H * 3 + row] = 1
 
 menu.save("graphics/phantom_intro/menu.png")
 print("menu.png generado")

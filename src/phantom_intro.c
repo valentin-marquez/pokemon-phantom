@@ -48,8 +48,25 @@ static const struct SpriteTemplate sTmpl_Crack = {
     .affineAnims = gDummySpriteAffineAnimTable, .callback = SpriteCallbackDummy,
 };
 
+// Cluster de copias del mismo sprite de grieta, radiando desde el centro real
+// de pantalla (120,80), para un impacto dramático casi a pantalla completa en
+// vez de un único sprite 64x64 chico. Todas comparten el mismo tile/paleta
+// (TAG_CRACK): son CreateSprite adicionales sobre la MISMA hoja ya cargada,
+// no un LoadSpriteSheet por copia -- no hay fuga ni costo extra de VRAM de
+// tiles, solo NUM_CRACKS entradas de OAM (bien por debajo del máximo de 64).
+#define NUM_CRACKS 5
+#define CRACK_OFFSET 56   // px de las copias diagonales respecto al centro
+
+static const s16 sCrackOffsets[NUM_CRACKS][2] = {
+    {              0,               0 },  // centro
+    { -CRACK_OFFSET, -CRACK_OFFSET },     // arriba-izquierda
+    {  CRACK_OFFSET, -CRACK_OFFSET },     // arriba-derecha
+    { -CRACK_OFFSET,  CRACK_OFFSET },     // abajo-izquierda
+    {  CRACK_OFFSET,  CRACK_OFFSET },     // abajo-derecha
+};
+
 static bool8 sCrackShown;
-static u8 sCrackSpriteId;
+static u8 sCrackSpriteIds[NUM_CRACKS];
 
 // Reproduce el vidrio impactado y, al terminar el fundido, salta a nextCB.
 static void PhantomGlass_Start(MainCallback nextCB)
@@ -60,6 +77,11 @@ static void PhantomGlass_Start(MainCallback nextCB)
     if (FindTaskIdByFunc(Task_PhantomGlass) != TASK_NONE)
         return;
 
+    // Consistencia con el camino del menú (que ya lo oculta al abrir): en el
+    // camino sin save este es el único lugar que lo apaga. Llamada
+    // idempotente si ya estaba oculto (TitleScreen_SetPressStartVisible solo
+    // reescribe .invisible en los sprites existentes).
+    TitleScreen_SetPressStartVisible(FALSE);
     sGlassNextCB = nextCB;
     sGlassPhase = 0;
     sGlassTimer = 0;
@@ -122,7 +144,14 @@ static void Task_PhantomGlass(u8 taskId)
             SetGpuReg(REG_OFFSET_BG0HOFS, 0); SetGpuReg(REG_OFFSET_BG0VOFS, 0);
             SetGpuReg(REG_OFFSET_BG2HOFS, 0); SetGpuReg(REG_OFFSET_BG2VOFS, 0);
             SetGpuReg(REG_OFFSET_BG3HOFS, 0); SetGpuReg(REG_OFFSET_BG3VOFS, 0);
-            sCrackSpriteId = CreateSprite(&sTmpl_Crack, 120, 80, 0);  // centro de 240x160
+            {
+                u32 i;
+                for (i = 0; i < NUM_CRACKS; i++)
+                {
+                    sCrackSpriteIds[i] = CreateSprite(&sTmpl_Crack,
+                        120 + sCrackOffsets[i][0], 80 + sCrackOffsets[i][1], 0);  // 120,80 = centro de 240x160
+                }
+            }
             sCrackShown = TRUE;
             PlaySE(SE_ICE_CRACK);   // el propio crujido, justo cuando aparecen las grietas
             sGlassPhase = 2;
@@ -141,8 +170,13 @@ static void Task_PhantomGlass(u8 taskId)
     case 3: // fundido a negro
         if (!gPaletteFade.active)
         {
-            if (sCrackShown && sCrackSpriteId < MAX_SPRITES)
-                DestroySprite(&gSprites[sCrackSpriteId]);
+            if (sCrackShown)
+            {
+                u32 i;
+                for (i = 0; i < NUM_CRACKS; i++)
+                    if (sCrackSpriteIds[i] < MAX_SPRITES)
+                        DestroySprite(&gSprites[sCrackSpriteIds[i]]);
+            }
             FreeSpriteTilesByTag(TAG_CRACK);
             FreeSpritePaletteByTag(TAG_CRACK);
             DestroyTask(taskId);
@@ -155,11 +189,16 @@ static void Task_PhantomGlass(u8 taskId)
 
 // --- Menú Nueva partida / Continuar (overlay por sprites, camino con save) ---
 //
-// Motivo generado por graphics/phantom_intro/gen.py: dos bloques de texto
-// ("NUEVA"/"PARTIDA" y "CONTINUAR") + un cursor '>', apilados VERTICALMENTE en
+// Motivo generado por graphics/phantom_intro/gen.py: TRES bloques de texto
+// ("NUEVA", "PARTIDA", "CONTINUAR") + un cursor '>', apilados VERTICALMENTE en
 // menu.png con el ancho completo de un sprite 64x32. Ver el comentario en
 // gen.py: eso evita que el barrido de tiles de gbagfx intercale las filas de
 // dos sprites de 64 de ancho (lo que pasaría con una hoja lado-a-lado).
+//
+// "NUEVA PARTIDA" (~78px a 6px/char) no entra en un sprite de 64px de ancho
+// (el máximo de OAM en GBA), así que esa línea usa DOS sprites: el bloque
+// "NUEVA" y el bloque "PARTIDA", posicionados pegados en X (ver
+// MENU_LABEL0_X/MENU_LABEL1_X) para leerse como una sola línea continua.
 static const u32 sMenuGfx[] = INCBIN_U32("graphics/phantom_intro/menu.4bpp");
 static const u16 sMenuPal[] = INCBIN_U16("graphics/phantom_intro/menu.gbapal");
 
@@ -167,29 +206,36 @@ static const u16 sMenuPal[] = INCBIN_U16("graphics/phantom_intro/menu.gbapal");
 
 // Offsets de tile (unidades de tile 4bpp, no bytes) dentro de la hoja; deben
 // coincidir con el layout vertical que arma gen.py.
-#define MENU_TILE_LABEL0 0    // "NUEVA" / "PARTIDA", bloque 64x32 (32 tiles)
-#define MENU_TILE_LABEL1 32   // "CONTINUAR",         bloque 64x32 (32 tiles)
-#define MENU_TILE_CURSOR 64   // '>',                 tile suelto 8x8
+#define MENU_TILE_NUEVA     0    // "NUEVA",     bloque 64x32 (32 tiles)
+#define MENU_TILE_PARTIDA  32    // "PARTIDA",   bloque 64x32 (32 tiles)
+#define MENU_TILE_CONTINUAR 64   // "CONTINUAR", bloque 64x32 (32 tiles)
+#define MENU_TILE_CURSOR   96    // '>',         tile suelto 8x8
 
-// Debajo del logo/silueta, centrado donde normalmente vive PRESS START
-// (PRESS_START_Y=114 en title_screen.c) -- ese sprite se oculta mientras el
-// menú está abierto.
+// Pegado inmediatamente debajo del logo (pedido del review de esta pasada:
+// antes quedaba centrado en la mitad inferior de pantalla, lejos del logo).
 //
 // OJO: CreateSprite posiciona por el CENTRO del sprite, no por la esquina
 // superior izquierda (ver CalcCenterToCornerVec en src/sprite.c) -- estas
 // constantes son coordenadas de CENTRO.
-// El logo PHANTOM (BG0) llega hasta ~y=102 en su serifa más baja (columna
-// central, cerca de la "M"); estas Y se corrieron hacia abajo respecto al
-// primer intento (108/140) porque a esa altura la línea "NUEVA" pisaba esa
-// serifa (ver docs/design/captures/t4_menu.png). Con estos valores el bloque
-// "NUEVA"/"PARTIDA" arranca claro del logo y "CONTINUAR" queda en el tercio
-// inferior, sin tocar la línea de arriba.
-#define MENU_LABEL_X   120   // 120 = mitad de los 240px de pantalla (bloques de 64 centrados)
-#define MENU_LABEL0_Y  120   // centro del bloque "NUEVA"/"PARTIDA"
-#define MENU_LABEL1_Y  142   // centro del bloque "CONTINUAR"
-#define MENU_CURSOR_X  78    // a la izquierda de las etiquetas
-#define MENU_CURSOR_Y0 112   // alineado con la línea "NUEVA"
-#define MENU_CURSOR_Y1 142   // alineado con "CONTINUAR"
+//
+// El logo PHANTOM (BG0) llega hasta y=102 en su serifa más baja, en la
+// columna x≈120 (la "M", justo donde cae el bloque "PARTIDA" de abajo) --
+// medido por análisis de píxeles sobre docs/design/captures/final/01_title.png
+// (colores de la paleta del logo, no el cielo/nubes). Con TEXT_Y=2 dentro de
+// cada bloque de 32px, el texto arranca en pantalla a MENU_ROW0_Y-14: con
+// MENU_ROW0_Y=121 eso es y=107, 5px bajo la serifa más profunda del logo
+// (verificado por captura real: un primer intento con MENU_ROW0_Y=118 daba
+// solo 1px de margen -- demasiado justo -- ver docs/design/captures/final/02_menu.png).
+// "CONTINUAR" va en la fila siguiente, separada por 8px de la línea de
+// arriba, y termina muy por encima del final de pantalla (margen amplio abajo
+// a propósito: el pedido es "pegado al logo", no "llenar la pantalla").
+#define MENU_LABEL0_X   108   // centro del bloque "NUEVA" (fila 0) y "CONTINUAR" (fila 1) -- misma X: alineados a la izquierda
+#define MENU_LABEL1_X   143   // centro del bloque "PARTIDA": pegado a la derecha de "NUEVA" en la misma línea
+#define MENU_ROW0_Y     121   // centro de fila 0: "NUEVA PARTIDA", justo bajo el logo
+#define MENU_ROW1_Y     136   // centro de fila 1: "CONTINUAR"
+#define MENU_CURSOR_X    64   // a la izquierda de las etiquetas
+#define MENU_CURSOR_Y0  110   // alineado con la línea "NUEVA PARTIDA"
+#define MENU_CURSOR_Y1  125   // alineado con "CONTINUAR"
 
 static const struct OamData sOam_MenuLabel = {
     .affineMode = ST_OAM_AFFINE_OFF,
@@ -208,7 +254,7 @@ static const struct OamData sOam_MenuCursor = {
     .priority = 0,
 };
 
-static const struct SpriteSheet sSheet_Menu = { sMenuGfx, 64 * 72 / 2, TAG_MENU };
+static const struct SpriteSheet sSheet_Menu = { sMenuGfx, 64 * 104 / 2, TAG_MENU };
 static const struct SpritePalette sPal_Menu = { sMenuPal, TAG_MENU };
 
 static const struct SpriteTemplate sTmpl_MenuLabel = {
@@ -224,7 +270,7 @@ static const struct SpriteTemplate sTmpl_MenuCursor = {
 
 static bool8 sMenuOpen;
 static u8 sMenuCursor;          // 0 = Nueva, 1 = Continuar
-static u8 sMenuSpriteIds[3];    // [0]=label Nueva/Partida [1]=label Continuar [2]=cursor
+static u8 sMenuSpriteIds[4];    // [0]=label Nueva [1]=label Partida [2]=label Continuar [3]=cursor
 // Debounce de un frame: silencia el primer tick de Task_PhantomMenu (ver abajo).
 static u8 sMenuInputDelay;
 
@@ -233,7 +279,7 @@ static void Task_PhantomMenu(u8 taskId);
 static void CloseMenu(void)
 {
     u32 i;
-    for (i = 0; i < 3; i++)
+    for (i = 0; i < 4; i++)
         if (sMenuSpriteIds[i] < MAX_SPRITES)
             DestroySprite(&gSprites[sMenuSpriteIds[i]]);
     FreeSpriteTilesByTag(TAG_MENU);
@@ -248,20 +294,25 @@ static void OpenMenu(void)
     LoadSpriteSheet(&sSheet_Menu);
     LoadSpritePalette(&sPal_Menu);
 
-    id = CreateSprite(&sTmpl_MenuLabel, MENU_LABEL_X, MENU_LABEL0_Y, 0);
+    id = CreateSprite(&sTmpl_MenuLabel, MENU_LABEL0_X, MENU_ROW0_Y, 0);
     if (id != MAX_SPRITES)
-        gSprites[id].oam.tileNum += MENU_TILE_LABEL0;
+        gSprites[id].oam.tileNum += MENU_TILE_NUEVA;
     sMenuSpriteIds[0] = id;
 
-    id = CreateSprite(&sTmpl_MenuLabel, MENU_LABEL_X, MENU_LABEL1_Y, 0);
+    id = CreateSprite(&sTmpl_MenuLabel, MENU_LABEL1_X, MENU_ROW0_Y, 0);
     if (id != MAX_SPRITES)
-        gSprites[id].oam.tileNum += MENU_TILE_LABEL1;
+        gSprites[id].oam.tileNum += MENU_TILE_PARTIDA;
     sMenuSpriteIds[1] = id;
+
+    id = CreateSprite(&sTmpl_MenuLabel, MENU_LABEL0_X, MENU_ROW1_Y, 0);
+    if (id != MAX_SPRITES)
+        gSprites[id].oam.tileNum += MENU_TILE_CONTINUAR;
+    sMenuSpriteIds[2] = id;
 
     id = CreateSprite(&sTmpl_MenuCursor, MENU_CURSOR_X, MENU_CURSOR_Y0, 0);
     if (id != MAX_SPRITES)
         gSprites[id].oam.tileNum += MENU_TILE_CURSOR;
-    sMenuSpriteIds[2] = id;
+    sMenuSpriteIds[3] = id;
 
     sMenuCursor = 0;
     sMenuOpen = TRUE;
@@ -291,8 +342,8 @@ static void Task_PhantomMenu(u8 taskId)
     {
         sMenuCursor ^= 1;
         PlaySE(SE_SELECT);
-        if (sMenuSpriteIds[2] < MAX_SPRITES)
-            gSprites[sMenuSpriteIds[2]].y = (sMenuCursor == 0) ? MENU_CURSOR_Y0 : MENU_CURSOR_Y1;
+        if (sMenuSpriteIds[3] < MAX_SPRITES)
+            gSprites[sMenuSpriteIds[3]].y = (sMenuCursor == 0) ? MENU_CURSOR_Y0 : MENU_CURSOR_Y1;
     }
     else if (JOY_NEW(A_BUTTON))
     {
