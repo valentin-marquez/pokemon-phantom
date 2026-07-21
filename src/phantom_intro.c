@@ -53,6 +53,12 @@ static u8 sCrackSpriteId;
 // Reproduce el vidrio impactado y, al terminar el fundido, salta a nextCB.
 static void PhantomGlass_Start(MainCallback nextCB)
 {
+    // Idempotente: si el vidrio ya está en marcha, ignorar reentradas (p. ej.
+    // doble pulsación de Start durante el efecto). Sin esto se orfana el sprite
+    // de grieta y se fuga el tile-range (LoadSpriteSheet NO es idempotente).
+    if (FindTaskIdByFunc(Task_PhantomGlass) != TASK_NONE)
+        return;
+
     sGlassNextCB = nextCB;
     sGlassPhase = 0;
     sGlassTimer = 0;
@@ -64,10 +70,9 @@ static void PhantomGlass_Start(MainCallback nextCB)
     LoadSpriteSheet(&sSheet_Crack);
     LoadSpritePalette(&sPal_Crack);
     sCrackShown = FALSE;
-    if (FindTaskIdByFunc(Task_PhantomGlass) == TASK_NONE)
-        // Prioridad > la de Task_TitleScreenMain (4): así corremos DESPUÉS de su
-        // SetMainTitleScreen() cada frame y nuestro BLDCNT/BLDY no queda pisado.
-        CreateTask(Task_PhantomGlass, 5);
+    // Prioridad > la de Task_TitleScreenMain (4): así corremos DESPUÉS de su
+    // SetMainTitleScreen() cada frame y nuestro BLDCNT/BLDY no queda pisado.
+    CreateTask(Task_PhantomGlass, 5);
 }
 
 #define GLASS_SHAKE_FRAMES 14
