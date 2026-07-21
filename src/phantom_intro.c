@@ -12,6 +12,7 @@
 #include "gpu_regs.h"
 #include "sprite.h"
 #include "decompress.h"
+#include "title_screen.h"
 #include "constants/rgb.h"
 #include "constants/songs.h"
 
@@ -143,10 +144,167 @@ static void Task_PhantomGlass(u8 taskId)
     }
 }
 
+// --- Menú Nueva partida / Continuar (overlay por sprites, camino con save) ---
+//
+// Motivo generado por graphics/phantom_intro/gen.py: dos bloques de texto
+// ("NUEVA"/"PARTIDA" y "CONTINUAR") + un cursor '>', apilados VERTICALMENTE en
+// menu.png con el ancho completo de un sprite 64x32. Ver el comentario en
+// gen.py: eso evita que el barrido de tiles de gbagfx intercale las filas de
+// dos sprites de 64 de ancho (lo que pasaría con una hoja lado-a-lado).
+static const u32 sMenuGfx[] = INCBIN_U32("graphics/phantom_intro/menu.4bpp");
+static const u16 sMenuPal[] = INCBIN_U16("graphics/phantom_intro/menu.gbapal");
+
+#define TAG_MENU 0x5001
+
+// Offsets de tile (unidades de tile 4bpp, no bytes) dentro de la hoja; deben
+// coincidir con el layout vertical que arma gen.py.
+#define MENU_TILE_LABEL0 0    // "NUEVA" / "PARTIDA", bloque 64x32 (32 tiles)
+#define MENU_TILE_LABEL1 32   // "CONTINUAR",         bloque 64x32 (32 tiles)
+#define MENU_TILE_CURSOR 64   // '>',                 tile suelto 8x8
+
+// Debajo del logo/silueta, centrado donde normalmente vive PRESS START
+// (PRESS_START_Y=114 en title_screen.c) -- ese sprite se oculta mientras el
+// menú está abierto.
+//
+// OJO: CreateSprite posiciona por el CENTRO del sprite, no por la esquina
+// superior izquierda (ver CalcCenterToCornerVec en src/sprite.c) -- estas
+// constantes son coordenadas de CENTRO.
+#define MENU_LABEL_X   120   // 120 = mitad de los 240px de pantalla (bloques de 64 centrados)
+#define MENU_LABEL0_Y  108   // centro del bloque "NUEVA"/"PARTIDA"
+#define MENU_LABEL1_Y  140   // centro del bloque "CONTINUAR"
+#define MENU_CURSOR_X  78    // a la izquierda de las etiquetas
+#define MENU_CURSOR_Y0 100   // alineado con la línea "NUEVA"
+#define MENU_CURSOR_Y1 140   // alineado con "CONTINUAR"
+
+static const struct OamData sOam_MenuLabel = {
+    .affineMode = ST_OAM_AFFINE_OFF,
+    .objMode = ST_OAM_OBJ_NORMAL,
+    .bpp = ST_OAM_4BPP,
+    .shape = SPRITE_SHAPE(64x32),
+    .size = SPRITE_SIZE(64x32),
+    .priority = 0,
+};
+static const struct OamData sOam_MenuCursor = {
+    .affineMode = ST_OAM_AFFINE_OFF,
+    .objMode = ST_OAM_OBJ_NORMAL,
+    .bpp = ST_OAM_4BPP,
+    .shape = SPRITE_SHAPE(8x8),
+    .size = SPRITE_SIZE(8x8),
+    .priority = 0,
+};
+
+static const struct SpriteSheet sSheet_Menu = { sMenuGfx, 64 * 72 / 2, TAG_MENU };
+static const struct SpritePalette sPal_Menu = { sMenuPal, TAG_MENU };
+
+static const struct SpriteTemplate sTmpl_MenuLabel = {
+    .tileTag = TAG_MENU, .paletteTag = TAG_MENU, .oam = &sOam_MenuLabel,
+    .anims = gDummySpriteAnimTable, .images = NULL,
+    .affineAnims = gDummySpriteAffineAnimTable, .callback = SpriteCallbackDummy,
+};
+static const struct SpriteTemplate sTmpl_MenuCursor = {
+    .tileTag = TAG_MENU, .paletteTag = TAG_MENU, .oam = &sOam_MenuCursor,
+    .anims = gDummySpriteAnimTable, .images = NULL,
+    .affineAnims = gDummySpriteAffineAnimTable, .callback = SpriteCallbackDummy,
+};
+
+static bool8 sMenuOpen;
+static u8 sMenuCursor;          // 0 = Nueva, 1 = Continuar
+static u8 sMenuSpriteIds[3];    // [0]=label Nueva/Partida [1]=label Continuar [2]=cursor
+// Debounce de un frame: silencia el primer tick de Task_PhantomMenu (ver abajo).
+static u8 sMenuInputDelay;
+
+static void Task_PhantomMenu(u8 taskId);
+
+static void CloseMenu(void)
+{
+    u32 i;
+    for (i = 0; i < 3; i++)
+        if (sMenuSpriteIds[i] < MAX_SPRITES)
+            DestroySprite(&gSprites[sMenuSpriteIds[i]]);
+    FreeSpriteTilesByTag(TAG_MENU);
+    FreeSpritePaletteByTag(TAG_MENU);
+    sMenuOpen = FALSE;
+}
+
+static void OpenMenu(void)
+{
+    u8 id;
+
+    LoadSpriteSheet(&sSheet_Menu);
+    LoadSpritePalette(&sPal_Menu);
+
+    id = CreateSprite(&sTmpl_MenuLabel, MENU_LABEL_X, MENU_LABEL0_Y, 0);
+    if (id != MAX_SPRITES)
+        gSprites[id].oam.tileNum += MENU_TILE_LABEL0;
+    sMenuSpriteIds[0] = id;
+
+    id = CreateSprite(&sTmpl_MenuLabel, MENU_LABEL_X, MENU_LABEL1_Y, 0);
+    if (id != MAX_SPRITES)
+        gSprites[id].oam.tileNum += MENU_TILE_LABEL1;
+    sMenuSpriteIds[1] = id;
+
+    id = CreateSprite(&sTmpl_MenuCursor, MENU_CURSOR_X, MENU_CURSOR_Y0, 0);
+    if (id != MAX_SPRITES)
+        gSprites[id].oam.tileNum += MENU_TILE_CURSOR;
+    sMenuSpriteIds[2] = id;
+
+    sMenuCursor = 0;
+    sMenuOpen = TRUE;
+    sMenuInputDelay = 1;
+    TitleScreen_SetPressStartVisible(FALSE);
+    // Prioridad 5 (> la 4 de Task_TitleScreenMain, como el vidrio): el frame en
+    // que A confirma, esta task corre DESPUÉS de Task_TitleScreenMain, cuyo
+    // manejo de input ya queda en no-op por PhantomIntro_IsBusy() mientras el
+    // menú está abierto. Con prioridad < 4 el orden se invertiría y ambas
+    // tasks podrían reaccionar al mismo input el mismo frame.
+    CreateTask(Task_PhantomMenu, 5);
+}
+
+static void Task_PhantomMenu(u8 taskId)
+{
+    // La task se crea DURANTE la ejecución de Task_TitleScreenMain (el frame
+    // en que se pulsó Start/A) y corre más tarde ESE MISMO frame -- sin este
+    // debounce, vería el mismo JOY_NEW que la abrió y confirmaría "Nueva
+    // partida" al instante, sin dar chance a elegir.
+    if (sMenuInputDelay)
+    {
+        sMenuInputDelay = 0;
+        return;
+    }
+
+    if (JOY_NEW(DPAD_UP) || JOY_NEW(DPAD_DOWN))
+    {
+        sMenuCursor ^= 1;
+        PlaySE(SE_SELECT);
+        if (sMenuSpriteIds[2] < MAX_SPRITES)
+            gSprites[sMenuSpriteIds[2]].y = (sMenuCursor == 0) ? MENU_CURSOR_Y0 : MENU_CURSOR_Y1;
+    }
+    else if (JOY_NEW(A_BUTTON))
+    {
+        MainCallback next = (sMenuCursor == 0) ? ENTRADA_INTRO : CB2_ContinueSavedGame;
+        CloseMenu();
+        DestroyTask(taskId);
+        PhantomGlass_Start(next);   // el vidrio SOLO aquí, al confirmar
+    }
+    else if (JOY_NEW(B_BUTTON))
+    {
+        CloseMenu();
+        DestroyTask(taskId);
+        TitleScreen_SetPressStartVisible(TRUE);
+    }
+}
+
+bool8 PhantomIntro_IsBusy(void)
+{
+    return sMenuOpen || (FindTaskIdByFunc(Task_PhantomGlass) != TASK_NONE);
+}
+
 void PhantomIntro_OnStartPressed(void)
 {
+    if (sMenuOpen)
+        return;   // belt-and-suspenders: Task_TitleScreenMain ya gatea con IsBusy()
     if (gSaveFileStatus == SAVE_STATUS_OK)
-        PhantomGlass_Start(CB2_ContinueSavedGame);  // menú se añade en Task 4
+        OpenMenu();
     else
         PhantomGlass_Start(ENTRADA_INTRO);
 }

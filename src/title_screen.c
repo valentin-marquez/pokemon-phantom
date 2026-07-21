@@ -138,6 +138,12 @@ static u16 sCloudScrollDelay;
 static struct StarAnimationState sStarAnim;
 static struct GlitchEffect sGlitchEffect;
 static u8 sPressStartSpriteId;
+// spriteId por frame de CreatePressStartSprites, para poder togglear .invisible
+// desde TitleScreen_SetPressStartVisible (el menú Nueva/Continuar la oculta).
+static u8 sPressStartSpriteIds[NUM_PRESS_START_FRAMES];
+// Mientras está TRUE, SpriteCB_PressStart no fuerza .invisible de vuelta a
+// visible en su parpadeo (si no, el menú perdería la ocultación cada 16 frames).
+static bool8 sPressStartHidden;
 
 // Animation frame data for Press Start sprite
 static const union AnimCmd sAnim_PressStart_0[] = {
@@ -394,6 +400,11 @@ static void UpdateCloudPosition(void)
 
 static void SpriteCB_PressStart(struct Sprite *sprite)
 {
+    // Oculto por el menú Nueva/Continuar: no tocar .invisible, si no el
+    // parpadeo lo vuelve a mostrar cada 16 frames por debajo del overlay.
+    if (sPressStartHidden)
+        return;
+
     sprite->sTimer++;
     if (sprite->sTimer >= 16)
     {
@@ -417,12 +428,25 @@ static void CreatePressStartSprites(void)
     for (i = 0; i < NUM_PRESS_START_FRAMES; i++)
     {
         u8 spriteId = CreateSprite(&sPressStartSpriteTemplate, x + (i * 32), y, 0);
+        sPressStartSpriteIds[i] = spriteId;
         if (spriteId != MAX_SPRITES)
         {
             StartSpriteAnim(&gSprites[spriteId], i);
             gSprites[spriteId].sTimer = 0;
             gSprites[spriteId].sVisible = TRUE;
         }
+    }
+}
+
+void TitleScreen_SetPressStartVisible(bool8 visible)
+{
+    u8 i;
+
+    sPressStartHidden = !visible;
+    for (i = 0; i < NUM_PRESS_START_FRAMES; i++)
+    {
+        if (sPressStartSpriteIds[i] < MAX_SPRITES)
+            gSprites[sPressStartSpriteIds[i]].invisible = !visible;
     }
 }
 
@@ -527,7 +551,12 @@ static void Task_TitleScreenMain(u8 taskId)
 
     // Keep this task running every frame so clouds/glitch animate continuously.
     // Handle input to start the game here instead of destroying the task.
-    if (JOY_NEW(A_BUTTON) || JOY_NEW(START_BUTTON))
+    // Gated on !PhantomIntro_IsBusy(): mientras el menú Nueva/Continuar está
+    // abierto o el vidrio corre, esta task NO debe volver a llamar a
+    // PhantomIntro_OnStartPressed (reabriría el menú / relanzaría el vidrio
+    // cada vez que A/START se detecte, incluyendo el propio frame en que el
+    // menú confirma con A).
+    if (!PhantomIntro_IsBusy() && (JOY_NEW(A_BUTTON) || JOY_NEW(START_BUTTON)))
     {
         PhantomIntro_OnStartPressed();
     }
