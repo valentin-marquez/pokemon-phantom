@@ -10,7 +10,6 @@
 #include "minigame_ship.h"
 #include "task.h"
 #include "gpu_regs.h"
-#include "trig.h"
 #include "constants/rgb.h"
 #include "constants/songs.h"
 
@@ -58,6 +57,10 @@ static void Task_PhantomGlass(u8 taskId)
         }
         else
         {
+            // Re-afirmar BLDCNT cada tick: Task_TitleScreenMain (prioridad 4) corre
+            // antes que nosotros y su SetMainTitleScreen() lo pisa a "sin efecto"
+            // cada frame; si no lo reescribimos aquí, el fundido de BLDY queda inerte.
+            SetGpuReg(REG_OFFSET_BLDCNT, BLDCNT_TGT1_ALL | BLDCNT_EFFECT_LIGHTEN);
             SetGpuReg(REG_OFFSET_BLDY, 16 - (sGlassTimer * 4));
         }
         break;
