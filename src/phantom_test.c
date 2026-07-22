@@ -174,6 +174,48 @@ static void Test_SimaPlayerBoxFits(void)
     // Muy fuera de la sala: SimaRoom_IsSolid ya devuelve TRUE fuera de rango
     // (ver sima-oob-solid-* arriba), asi que la caja tampoco deberia caber.
     PHANTOM_ASSERT(!SimaActors_BoxFits(0, -100, -100), "sima-player-box-blocked-oob");
+
+    // Casos de margen (revision de codigo, Tarea 4): los tres casos de arriba
+    // caen todos dentro de una sola celda de la rejilla en las cuatro
+    // esquinas de la caja, asi que no detectarian un off-by-one en la
+    // aritmetica de SimaActors_BoxFits (p.ej. "right = left + COLLISION_W"
+    // olvidando el "-1" -- right pasaria de 29 a 30 y ambos numeros siguen
+    // cayendo en la misma celda [16,31], el test seguiria en verde).
+    //
+    // Se usa el piso 0 (src/sima_rooms.c, sFloor0), fila y=1: el pasillo
+    // superior "#@...........*#" es todo suelo de columna 1 a 13 y muro en
+    // la columna 14 (x=14 es '#'). Se elige el borde DERECHO del pasillo
+    // (columna 14) en vez del izquierdo porque es ahi donde se calcula
+    // "right" -- la variable que el bug hipotetico de arriba corrompe; el
+    // margen izquierdo usa "left", que no tiene ese "-1" y no lo detectaria.
+    //
+    // Constantes relevantes (src/sima_actors.c): COLLISION_W = 12,
+    // COLLISION_MARGIN_X = (16 - 12) / 2 = 2. Con "x" la esquina superior
+    // izquierda del sprite (parametro de SimaActors_BoxFits):
+    //   left  = x + 2
+    //   right = left + COLLISION_W - 1 = left + 11
+    //
+    // Se fija y = 16 (fila 1 completa, pixeles 16-31) para que arriba/abajo
+    // de la caja nunca toquen una fila distinta y solo el eje X este en
+    // juego:
+    //   top    = y + 2  = 18  -> fila 18/16 = 1
+    //   bottom = top + 11 = 29 -> fila 29/16 = 1 (misma fila que top)
+    //
+    // Muro (columna 14) empieza en el pixel 14*16 = 224. Suelo (columna 13,
+    // la casilla '*' del pasillo) termina en el pixel 13*16+15 = 223.
+    //
+    // Caso "libra por 1px" (x = 210): left = 212, right = 212+11 = 223.
+    // right/16 = 13 -> suelo en las cuatro esquinas -> debe caber (TRUE).
+    // Con el bug hipotetico (right = left+12 = 224), right/16 pasaria a 14
+    // (muro) y este caso fallaria en falso -- exactamente el off-by-one que
+    // el caso de abajo, solo, no distingue.
+    PHANTOM_ASSERT(SimaActors_BoxFits(0, 210, 16), "sima-box-clear-1px");
+
+    // Caso "solapa por 1px" (x = 211, un pixel mas cerca del muro): left =
+    // 213, right = 213+11 = 224. right/16 = 14 (muro, columna 14) -> la
+    // esquina superior derecha de la caja cae sobre el muro -> no debe caber
+    // (FALSE).
+    PHANTOM_ASSERT(!SimaActors_BoxFits(0, 211, 16), "sima-box-blocked-1px");
 }
 
 void PhantomTest_Run(void)
