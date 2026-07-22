@@ -13,6 +13,7 @@
 #include "constants/flags.h"
 #include "start_menu.h"
 #include "wild_encounter.h"
+#include "sima_rooms.h"
 
 u8 gPhantomTestFailed = 0;
 
@@ -93,6 +94,52 @@ static void Test_PhantomExecutionSeen(void)
     PHANTOM_ASSERT(FlagGet(FLAG_PHANTOM_SAW_EXECUTION) == TRUE, "saw-execution");
 }
 
+// Test 7 (SIMA): las salas son validas por construccion -- cerradas por muros,
+// con exactamente una escalera y un spawn transitable. Un fallo aqui es una
+// sala mal dibujada, y sin esta comprobacion solo se detectaria jugando.
+static void Test_SimaRoomsValid(void)
+{
+    u8 floor;
+    bool8 allEnclosed = TRUE;
+    bool8 allHaveOneStairs = TRUE;
+    bool8 allSpawnsWalkable = TRUE;
+
+    for (floor = 0; floor < SIMA_FLOOR_COUNT; floor++)
+    {
+        s8 x, y;
+        u32 stairs = 0;
+        for (x = 0; x < SIMA_ROOM_W; x++)
+        {
+            if (!SimaRoom_IsSolid(floor, x, 0) || !SimaRoom_IsSolid(floor, x, SIMA_ROOM_H - 1))
+                allEnclosed = FALSE;
+        }
+        for (y = 0; y < SIMA_ROOM_H; y++)
+        {
+            if (!SimaRoom_IsSolid(floor, 0, y) || !SimaRoom_IsSolid(floor, SIMA_ROOM_W - 1, y))
+                allEnclosed = FALSE;
+        }
+        for (y = 0; y < SIMA_ROOM_H; y++)
+            for (x = 0; x < SIMA_ROOM_W; x++)
+                if (SimaRoom_IsStairs(floor, x, y))
+                    stairs++;
+        if (stairs != 1)
+            allHaveOneStairs = FALSE;
+        {
+            s8 sx, sy;
+            SimaRoom_GetSpawn(floor, &sx, &sy);
+            if (SimaRoom_IsSolid(floor, sx, sy))
+                allSpawnsWalkable = FALSE;
+        }
+    }
+
+    PHANTOM_ASSERT(allEnclosed, "sima-rooms-enclosed");
+    PHANTOM_ASSERT(allHaveOneStairs, "sima-rooms-one-stairs");
+    PHANTOM_ASSERT(allSpawnsWalkable, "sima-spawns-walkable");
+    // Fuera de rango debe ser solido, o el jugador se sale de la sala.
+    PHANTOM_ASSERT(SimaRoom_IsSolid(0, -1, 5), "sima-oob-solid-left");
+    PHANTOM_ASSERT(SimaRoom_IsSolid(0, SIMA_ROOM_W, 5), "sima-oob-solid-right");
+}
+
 void PhantomTest_Run(void)
 {
     PHANTOM_CHECKPOINT("suite-start");
@@ -107,6 +154,7 @@ void PhantomTest_Run(void)
     Test_NoWildEncounters();
     Test_PhantomAdvanceDay();
     Test_PhantomExecutionSeen();
+    Test_SimaRoomsValid();
     PHANTOM_CHECKPOINT("suite-end");
     PhantomTest_Finish(gPhantomTestFailed);
 }

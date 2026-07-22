@@ -78,6 +78,41 @@ def convert(src_path, out_name):
     print(f"{out_name}.png  ({w}x{h})")
 
 
+# Celdas de 16x16 que usa de verdad el crawler de SIMA (Tarea 3), recortadas
+# de las hojas ya convertidas (mismo indexado, misma paleta unica) en vez de
+# cargar grounds/walls enteros: 832+896 = 1728 tiles de hardware no caben en
+# el campo de 10 bits (1024) de una entrada de tilemap. Coordenadas en celdas
+# de 16x16, elegidas por uniformidad/contraste -- no tocar sin remedir.
+# indice 0 = suelo, 1 = muro, 2 = escalera (ver include/sima_rooms.h).
+TILE_CELLS = [
+    ("grounds", 12, 12),  # crema (212,210,155) al 97%, con motas
+    ("walls", 5, 1),      # marron oscuro (88,68,34) con vetas verdes
+    ("props", 3, 0),      # escalera de mano
+]
+
+
+def generate_tiles():
+    """Recorta TILE_CELLS de las hojas ya convertidas en OUT y las pega en
+    fila en tiles.png (48x16): 3 celdas de 16x16, una por indice de
+    SimaTile. Las hojas fuente comparten paleta (verificado en la Tarea 1),
+    asi que el recorte es una simple copia de indices, sin recuantizar."""
+    out = Image.new("P", (16 * len(TILE_CELLS), 16), 0)
+    pal = list(TRANSPARENT)
+    for rgb in COLORS:
+        pal += list(rgb)
+    pal += [0, 0, 0] * (16 - 1 - len(COLORS))
+    out.putpalette(pal)
+
+    for i, (sheet, cellX, cellY) in enumerate(TILE_CELLS):
+        sheet_path = os.path.join(OUT, sheet + ".png")
+        src = Image.open(sheet_path)
+        cell = src.crop((cellX * 16, cellY * 16, cellX * 16 + 16, cellY * 16 + 16))
+        out.paste(cell, (i * 16, 0))
+
+    out.save(os.path.join(OUT, "tiles.png"))
+    print(f"tiles.png  ({out.width}x{out.height})")
+
+
 def main():
     root = sys.argv[1] if len(sys.argv) > 1 else SRC_DEFAULT
     missing = [p for p in ASSETS if not os.path.exists(os.path.join(root, p))]
@@ -85,6 +120,7 @@ def main():
         sys.exit("ERROR: no encontrados en " + root + ":\n  " + "\n  ".join(missing))
     for rel, name in ASSETS.items():
         convert(os.path.join(root, rel), name)
+    generate_tiles()
 
 
 if __name__ == "__main__":
