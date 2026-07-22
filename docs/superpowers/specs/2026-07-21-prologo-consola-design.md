@@ -60,8 +60,14 @@ con su fantasma.
 
 ## 3. El juego de la consola
 
-Un dungeon crawler ficticio. Nombre provisional: **Super Quest** (el pack se llama
-"Super Gameboy Quest"; conviene un nombre propio que no arrastre la marca).
+Un dungeon crawler ficticio: **SIMA**.
+
+Una *sima* es una cavidad vertical en la roca — un agujero por el que se baja. El
+nombre describe la forma del juego (pisos que descienden) y es la isla en
+miniatura: un sitio al que se entra hacia abajo y del que no se vuelve. En lo
+práctico son cuatro letras, legibles en un logo gordo de Game Boy, y una palabra
+poco común, así que suena a cartucho real. No se reutiliza "Super Gameboy Quest"
+(el nombre del pack) para no arrastrar una marca ajena dentro de la ficción.
 
 ### Estructura
 
@@ -107,19 +113,21 @@ principio, explicación al final — y esta no se explica).
 | Pack | Uso | Licencia | Riesgo |
 |---|---|---|---|
 | [SGQ Dungeons](https://toadzillart.itch.io/dungeons-pack) | suelos, muros, props, rata/murciélago/slime, armas, proyectiles | Uso comercial y **adaptación permitidas** con crédito + enlace | bajo |
-| [SGQ Monsters](https://toadzillart.itch.io/monster-pack) | Slime King, enemigos extra | **CC BY-ND 4.0** | **ver aviso** |
+| [SGQ Monsters](https://toadzillart.itch.io/monster-pack) | Slime King, enemigos extra | Uso comercial y **adaptación permitidas** con crédito + enlace (ver nota) | bajo |
 | [SGQ UI](https://toadzillart.itch.io/ui-pack) | HUD, iconos, elementos de marcador | Uso comercial y **adaptación permitidas** con crédito + enlace | bajo |
 
-> **AVISO DE LICENCIA — CC BY-ND.** De los tres packs, **solo el de monstruos** es
-> ND; mazmorra y UI permiten adaptar explícitamente. *NoDerivatives* prohíbe obras
-> derivadas.
-> Reindexar el PNG es defendible como conversión de formato, pero **recolorear,
-> recortar frames o editar el arte del pack de monstruos sí sería un derivado**.
-> Dado que el Slime King necesita ir a un sprite de 64×64 (§6) y que puede hacer
-> falta ajustar paleta, esto **hay que resolverlo antes de depender de ese pack**:
-> preguntar al autor, o limitarse a los enemigos del pack de mazmorra (que sí
-> permite adaptación). El Slime King es el único asset del pack ND que es
-> estructural para el diseño.
+> **Nota sobre el pack de monstruos.** Su campo de metadatos en itch.io dice
+> `CC BY-ND 4.0` (*sin derivados*), pero el **texto del propio autor en la
+> descripción concede explícitamente** *"Adapt and/or modify the assets to match
+> your project"*, igual que los otros dos packs. Es una contradicción de la página,
+> no del permiso: manda la concesión expresa del titular. Se documenta aquí por si
+> el proyecto dejara de ser gratuito algún día, en cuyo caso conviene pedirle al
+> autor una confirmación por escrito.
+
+Los tres packs prohíben lo mismo: **redistribuir o vender los assets directamente
+(aun modificados)**, atribuirse su autoría, y usarlos en proyectos cripto/NFT.
+Integrarlos convertidos dentro de la ROM no es redistribuirlos; publicar el
+`graphics/` con los PNG sueltos se acercaría más a la línea.
 
 **Atribución obligatoria** en `CREDITS.md`, con enlace a cada pack. La entrada
 actual de *Classic Shmups* (CC BY-SA 4.0) se retira si dejan de usarse esos assets.
@@ -155,7 +163,7 @@ actual de *Classic Shmups* (CC BY-SA 4.0) se retira si dejan de usarse esos asse
 Al morir:
 
 ```
-     --- SUPER QUEST ---
+     ------- SIMA -------
 
         PISO ALCANZADO
               03
@@ -199,6 +207,8 @@ visual en mGBA de las tres rutas (sin save, con save+Nueva, con save+Continuar).
 Cada tarea del plan de implementación debe terminar con los tres builds sanos
 (`modern`, `PHANTOM_TEST=1`, `PHANTOM_DEBUG_BOOT=1`).
 
-**Riesgo mayor, anotado arriba:** la licencia ND del pack de monstruos afecta al
-único asset estructural del diseño (el Slime King). Resolverlo es prerrequisito de
-la tarea que lo integre, no algo que se descubra a mitad.
+**Riesgo mayor:** la conversión de assets. Los 31 PNG vienen en RGBA y `gbagfx`
+exige indexado, así que **nada compila hasta que exista el paso de reindexado**.
+Conviene resolverlo en la primera tarea del plan, con un script determinista y
+versionado (el proyecto ya tiene ese patrón en `graphics/phantom_intro/gen.py`),
+no a mano fichero por fichero.
