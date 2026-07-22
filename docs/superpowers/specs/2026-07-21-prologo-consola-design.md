@@ -134,14 +134,32 @@ actual de *Classic Shmups* (CC BY-SA 4.0) se retira si dejan de usarse esos asse
 
 ### Trabajo de conversión (verificado sobre los ficheros descargados)
 
-- **Los 31 PNG son RGBA.** `gbagfx` exige PNG **indexado** con paleta
-  (`tools/gbagfx/convert_png.c:146`). Hay que reindexar **todos**. Mecánico y
-  automatizable, pero obligatorio.
-- **Paleta ideal:** casi todos usan **5 colores** (4 + transparencia). Caben **tres
-  monstruos distintos en una sola paleta** de 16 usando rangos de índice
-  disjuntos — vale la pena, porque las paletas de OBJ son un recurso escaso.
-- **`elf.png` usa 27 colores** y en 4bpp caben 15. Es el único fichero que
-  incumple; hay que reducirle la paleta.
+Medido sobre los 32 PNG descargados:
+
+- **Todos son RGBA.** `gbagfx` exige PNG **indexado** con paleta
+  (`tools/gbagfx/convert_png.c:146`). Hay que reindexar **todos**. Es el único
+  trabajo obligatorio de conversión, y nada compila hasta que exista.
+- **Los 32 ficheros comparten UNA sola paleta de 4 colores.** 29 usan exactamente
+  estos cuatro y los otros 3 (los iconos y el teclado) usan subconjuntos estrictos:
+
+  | Índice | RGB | Rol |
+  |---|---|---|
+  | 0 | — | transparente |
+  | 1 | `(88, 68, 34)` | marrón oscuro |
+  | 2 | `(94, 133, 73)` | verde medio |
+  | 3 | `(120, 164, 106)` | verde claro |
+  | 4 | `(212, 210, 155)` | crema |
+
+- **Cero píxeles semitransparentes** en todo el conjunto: sin antialias ni bordes
+  suaves. La transparencia ya es binaria, que es justo lo que la GBA soporta (no
+  hay alfa por píxel). No hay que aplanar nada.
+
+**Consecuencias.** El reindexado es una **tabla de conversión fija de cuatro
+entradas** — sin cuantización, sin dithering, sin emparejado de colores; es
+determinista y no puede dar sorpresas entre ficheros. Y en tiempo de ejecución basta
+**una paleta para todos los tiles de mazmorra y otra para todos los sprites**
+(jugador, los doce enemigos, el jefe, proyectiles y HUD), dejando 15 de 16 paletas
+de BG y 15 de 16 de OBJ libres.
 
 ## 6. Restricciones técnicas resueltas
 
