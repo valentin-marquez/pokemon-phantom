@@ -31,9 +31,20 @@ static const u16 sTilesPal[] = INCBIN_U16("graphics/sima/grounds.gbapal");
 // HUD de corazones (Tarea 6): 2 celdas de 16x16 (corazón lleno/vacío)
 // recortadas de hud.png por graphics/sima/gen.py (generate_hud_hearts), no
 // la hoja de 8x9 completa -- esa serían 288 tiles de hardware (9 KB) contra
-// los 8 que hacen falta, y BG1 comparte char block con los mapblocks de
-// BG0/BG1 (ver el aviso de VRAM junto a sSimaBgTemplates, abajo).
+// los 8 que hacen falta (ver el reparto de VRAM junto a sSimaBgTemplates,
+// abajo).
 static const u32 sHudGfx[] = INCBIN_U32("graphics/sima/hud_hearts.4bpp");
+#define HUD_TILE_COUNT ((int)(sizeof(sHudGfx) / TILE_SIZE_4BPP))  // 8
+
+// Tile 100% transparente (las 32 bytes a 0, o sea las 8x8 posiciones en
+// blanco) para el char block de BG1. Hace falta uno propio porque
+// hud_hearts.4bpp NO reserva una celda vacía: su tile 0 es el cuarto
+// superior izquierdo del corazón LLENO, con píxeles opacos de verdad (ver
+// el bug real documentado junto a FillBgTilemapBufferRect en SetupGraphics,
+// más abajo -- ese tile 0 fue precisamente lo que corrompía la pantalla
+// entera). Se carga justo despues de sHudGfx, en el indice HUD_TILE_COUNT.
+static const u32 sBlankTile[TILE_SIZE_4BPP / sizeof(u32)] = {0};
+
 // La paleta es la unica de SIMA (indice 0 transparente + 4 tonos, verificada
 // en la Tarea 1 para las 10 hojas); grounds.gbapal vale para tiles.4bpp
 // tambien porque graphics/sima/gen.py recorta sin recuantizar.
@@ -48,30 +59,56 @@ static const u32 sHudGfx[] = INCBIN_U32("graphics/sima/hud_hearts.4bpp");
 // (8x8) dentro de una hoja de `sheetTilesWide` tiles -- basta con pasarle
 // el indice de SimaRoom_GetTileGfx como artCellX y artCellY=0.
 
+// REPARTO DE VRAM DE BG (Tarea de arreglo de VRAM, sobre la corrupción de
+// pantalla completa que metió la Tarea 6). Los 64 KB de VRAM de fondos
+// (0x0000-0xFFFF dentro de BG_VRAM) se dividen en bloques de tiles de 16 KB
+// (BG_CHAR_SIZE, indice*0x4000) y bloques de mapa de 2 KB (BG_SCREEN_SIZE,
+// indice*0x800), y AMBOS tipos de bloque viven en la MISMA VRAM de 64 KB --
+// hay que elegir los indices para que ningun char block se coma un map
+// block que este usando otro BG (o el mismo).
+//
+//   bloque de tiles 0 (BG0, sala)     : 0x0000-0x3FFF (152/512 tiles usados)
+//   bloque de tiles 1 (BG1, HUD)      : 0x4000-0x7FFF (9/512 tiles usados)
+//   0x8000-0xEFFF                     : LIBRE (bloques de tiles 2-29, 28 KB)
+//   bloque de mapa 30 (BG0 tilemap)   : 0xF000-0xF7FF
+//   bloque de mapa 31 (BG1 tilemap)   : 0xF800-0xFFFF
+//
+// Con los tiles apretados contra el principio (bloques 0-1) y los mapas
+// contra el final (bloques 30-31) sobra un colchon de 28 KB en medio antes
+// de que un char block pise un map block -- la proxima capa que se añada
+// (Tarea 9, el marcador) tiene bloques de tiles 2-29 libres de sobra.
+//
+// OJO: la corrupcion real que motivo este repaso NO fue un solape de VRAM.
+// La revision de la Tarea 5 habia avisado (con razon, en abstracto) de que
+// el char block 3 (0xC000-0xFFFF), usado por BG1 antes de este cambio,
+// comparte cola de VRAM con los map blocks 30/31 (0xF000-0xFFFF) -- pero los
+// 8 tiles de hud_hearts.4bpp se quedaban a 0x3000 bytes (384 tiles) de
+// distancia de pisarlos, asi que ESE solape nunca llego a pasar (verificado
+// leyendo la VRAM emulada: mapblocks y tiles de BG0 identicos con y sin
+// HUD). El bug real: SetBgTilemapBuffer deja el tilemap de BG1 a CERO, y la
+// casilla 0 por defecto apuntaba al tile 0 de hud_hearts.4bpp -- que no es
+// una celda en blanco, es el cuarto superior izquierdo del corazon LLENO,
+// con pixeles opacos. Como BG1 va con priority 0 (delante de BG0 y de los
+// sprites) y cubre las 30x20 celdas de la pantalla, ese fragmento de
+// corazon se pintaba encima de TODO menos de las 3 celdas que DrawHud si
+// toca -- de ahi el patron de marcas repetido. El arreglo (sBlankTile +
+// FillBgTilemapBufferRect en SetupGraphics, mas abajo) es independiente de
+// este reparto de bloques; el reparto se deja mas holgado igual, para que
+// quede obvio de un vistazo que no hay solape real.
 static const struct BgTemplate sSimaBgTemplates[] = {
     // BG0: la sala. Prioridad 1 (por detras de HUD/texto).
     {.bg = 0,
      .charBaseIndex = 0,
-     .mapBaseIndex = 31,
+     .mapBaseIndex = 30,
      .screenSize = 0,
      .paletteMode = 0,
      .priority = 1,
      .baseTile = 0},
     // BG1: HUD/texto. Tarea 6 lo usa para los corazones de vida (ver
     // DrawHud, más abajo); Tarea 9 añadirá el marcador encima.
-    //
-    // AVISO DE VRAM (hallado en revisión de la Tarea 5): el char block de
-    // este BG (índice 3) empieza en 0xC000 y ocupa 16 KB (hasta 0xFFFF), lo
-    // que SE SOLAPA con los mapblocks de BG0 (índice 31, en 0xF800-0xFFFF) y
-    // de este mismo BG1 (índice 30, en 0xF000-0xF7FF). Hay 0xF000-0xC000 =
-    // 0x3000 bytes = 384 tiles de 4bpp de margen antes de pisarlos. Los 8
-    // tiles de hud_hearts.4bpp (Tarea 6) se quedan cortísimos de ese límite;
-    // si un HUD futuro carga muchos más tiles aquí, recalcular este margen
-    // ANTES de añadirlos, o mover charBaseIndex a un bloque que no comparta
-    // cola de VRAM con los mapblocks (p. ej. 0 o 1).
     {.bg = 1,
-     .charBaseIndex = 3,
-     .mapBaseIndex = 30,
+     .charBaseIndex = 1,
+     .mapBaseIndex = 31,
      .screenSize = 0,
      .paletteMode = 0,
      .priority = 0,
@@ -339,9 +376,19 @@ static void SetupGraphics(void)
     // bits de una entrada de tilemap (ver graphics/sima/gen.py).
     LoadBgTiles(0, sTilesGfx, sizeof(sTilesGfx), 0);
     // HUD de corazones (Tarea 6): 8 tiles de hardware en el char block de
-    // BG1 -- muy por debajo del margen de 384 antes de pisar los mapblocks
-    // (ver el aviso de VRAM junto a sSimaBgTemplates).
+    // BG1 (ver el reparto de VRAM junto a sSimaBgTemplates). sBlankTile va
+    // justo despues, en el indice HUD_TILE_COUNT.
     LoadBgTiles(1, sHudGfx, sizeof(sHudGfx), 0);
+    LoadBgTiles(1, sBlankTile, sizeof(sBlankTile), HUD_TILE_COUNT);
+
+    // ARREGLO DEL BUG REAL (ver el reparto de VRAM junto a sSimaBgTemplates):
+    // SetBgTilemapBuffer acaba de dejar el tilemap de BG1 a cero, y la
+    // casilla 0 por defecto NO es una celda vacia -- apunta al primer tile
+    // de hud_hearts.4bpp, que tiene pixeles opacos de verdad. Hay que
+    // rellenar el tilemap ENTERO con sBlankTile antes de que nada se
+    // copie a VRAM; DrawHud (mas abajo) despues solo toca las 3 celdas de
+    // los corazones, dejando el resto en blanco de verdad.
+    FillBgTilemapBufferRect(1, HUD_TILE_COUNT, 0, 0, 32, 32, 0);
 
     // Paleta unica de SIMA (indice 0 transparente + 4 tonos): se carga una
     // sola vez en BG_PLTT_ID(0). Los corazones del HUD usan la misma paleta
