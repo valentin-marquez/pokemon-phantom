@@ -95,6 +95,18 @@ static const struct SpriteTemplate sTmpl_SimaPlayer = {
 // FRAME_A liso, FRAME_B con el destello de impacto) y aquí se orienta con
 // flips de OAM -- igual que el jugador reutiliza su frame de perfil para
 // izquierda/derecha en vez de tener arte por separado.
+//
+// Reverificado en la tarea de sensación de movimiento (releyendo
+// weapons.png celda a celda, con un script de componentes conexos en vez de
+// a ojo): TODA la hoja (528x768, 33x48 celdas) es así -- dagas/espadas
+// (filas 0-10), un shuriken/bumerán girando (filas 13-22, casi simétrico,
+// no sirve para orientar), libros/pociones abriéndose (filas 24-38) y
+// piquetas (filas 41-47) están cada una en una única familia de rotaciones
+// diagonales de 3D-a-2D (animación de giro/lanzamiento), NINGUNA con una
+// celda realmente horizontal o vertical. No hay arte cardinal que rescatar;
+// el implementador anterior no se lo perdió, no existe. Ver
+// UpdateAttack más abajo para la solución de flips + arco de barrido
+// cosmético elegida en su lugar.
 // ---------------------------------------------------------------------
 
 static const u32 sWeaponGfx[] = INCBIN_U32("graphics/sima/weapon.4bpp");
@@ -139,11 +151,18 @@ static const struct SpriteTemplate sTmpl_SimaWeapon = {
 // nuevo con sAttackTimer en 0, así que mantener A pulsado no encadena
 // ataques -- hay que soltar y volver a pulsar, y aun así el jugador espera
 // ATTACK_TOTAL_FRAMES completos (~0.27s a 60Hz) entre golpes. Mismo espíritu
-// que PLAYER_SPEED = 1: "paso deliberado, no arcade".
+// que PLAYER_SPEED: "paso deliberado, no arcade" (aunque PLAYER_SPEED suba
+// de 1 a 2, ver su propio comentario -- la cadencia del golpe no cambia).
 #define ATTACK_WINDUP_FRAMES   3  // arma visible (FRAME_A), sin dañar todavía
 #define ATTACK_ACTIVE_FRAMES   4  // arma visible (FRAME_B), caja de golpe activa
 #define ATTACK_RECOVERY_FRAMES 9  // arma oculta, cooldown antes de poder atacar de nuevo
 #define ATTACK_TOTAL_FRAMES (ATTACK_WINDUP_FRAMES + ATTACK_ACTIVE_FRAMES + ATTACK_RECOVERY_FRAMES)
+
+// NÚMERO DE GUSTO (mejora de sensación, ver UpdateAttack): desplazamiento en
+// píxeles del arco de barrido cosmético del arma, perpendicular a la
+// dirección del golpe. 3px es visible sin desalinear el arma de su casilla
+// adyacente al punto de parecer flotando fuera de sitio.
+#define ATTACK_SWEEP_PX 3
 
 // Caja de colisión, más chica que el sprite completo de 16x16 y centrada en
 // él: deja 2px de margen a cada lado para que doblar una esquina en un
@@ -156,8 +175,15 @@ static const struct SpriteTemplate sTmpl_SimaWeapon = {
 #define COLLISION_MARGIN_X ((16 - COLLISION_W) / 2)
 #define COLLISION_MARGIN_Y ((16 - COLLISION_H) / 2)
 
-#define PLAYER_SPEED 1        // px/frame: paso deliberado, no arcade -- encaja con el tono del juego
-#define WALK_ANIM_PERIOD 8    // frames entre pasos del ciclo de caminata
+// NUMERO DE GUSTO (ajustable jugando, ver el informe de esta tarea): 2 px/frame
+// -- cruzar una casilla de 16px pasa de 16 a 8 frames. A 1 px/frame el
+// personaje se sentia acartonado (informe del dueño del proyecto); 2 sigue
+// siendo un paso "serio" (no arcade) pero ya no se arrastra por la sala.
+#define PLAYER_SPEED 2
+// Frames entre pasos del ciclo de caminata. Escalado junto con PLAYER_SPEED
+// (era 8 cuando PLAYER_SPEED era 1) para mantener la MISMA cadencia relativa:
+// dos cambios de pose por casilla cruzada, con cualquier velocidad.
+#define WALK_ANIM_PERIOD 4
 
 // Nota: nunca inicializar estos estaticos con un valor no-cero inline (p.
 // ej. "= MAX_SPRITES") -- el linker moderno de este repo descarta la
@@ -181,6 +207,24 @@ static u8 sPlayerAnimTimer;
 static u8 sPlayerHP;
 static u8 sPlayerInvulnTimer;  // frames restantes sin poder recibir otro golpe
 
+// Empujon al recibir daño (mejora de sensacion, pedida por el dueño del
+// proyecto: "que lo haga retroceder o algo así"). sPlayerKnockbackTimer > 0
+// mientras dura -- SimaActors_UpdatePlayer lo consume ANTES de leer el D-pad
+// (ver el guard al principio de esa función), asi que el jugador pierde el
+// control por completo durante el empujón, igual que ya perdía el control
+// durante un golpe propio (sAttackTimer). Encaja con la invulnerabilidad que
+// ya existía: ambos arrancan en el mismo frame (ver el punto de contacto en
+// SimaActors_UpdateEnemies) pero duran cosas distintas a propósito --
+// SIMA_INVULN_FRAMES (~1s) es mucho más largo que el empujón (unos 8 frames,
+// ~0.13s): el jugador recupera el control mucho antes de dejar de parpadear.
+static u8 sPlayerKnockbackTimer;
+// Dirección del empujón, fijada UNA vez al golpear (signo, no magnitud -- la
+// magnitud por frame la da sKnockbackSteps más abajo): -1/0/+1 en cada eje,
+// puede ser diagonal si el enemigo no estaba alineado con el jugador en
+// ningún eje.
+static s8 sPlayerKnockbackDirX;
+static s8 sPlayerKnockbackDirY;
+
 // Ataque (Tarea 7). sWeaponActive es la misma guarda de presupuesto de
 // sprites que sPlayerActive (por si CreateSprite se queda sin hueco).
 // sAttackTimer en 0 significa "listo para atacar"; 1..ATTACK_TOTAL_FRAMES
@@ -194,8 +238,18 @@ static u8 sWeaponSpriteId;
 static u8 sAttackTimer;
 static u8 sAttackFacing;
 
+// Distancia del empujón repartida en pasos DECRECIENTES (fuerte al empezar,
+// se va frenando) en vez de a velocidad constante: se siente más a golpe de
+// verdad que a "deslizarse". NÚMEROS DE GUSTO (ver el informe de esta
+// tarea): suman 14px en 7 frames, dentro del rango pedido (12-16px / ~8
+// frames). Tocar este array es la única aritmética que hace falta para
+// afinar "qué tan fuerte empuja" sin tocar el resto de la lógica.
+static const s8 sKnockbackSteps[] = { 4, 3, 2, 2, 1, 1, 1 };
+#define KNOCKBACK_FRAMES (sizeof(sKnockbackSteps) / sizeof(sKnockbackSteps[0]))
+
 static void UpdatePlayerSprite(void);
 static void UpdateAttack(void);
+static void StartPlayerKnockback(s16 enemyX, s16 enemyY);
 
 // Función pura: ¿cabe la caja de colisión del jugador (16x16 con el margen
 // de arriba) en la posición (x, y) [esquina superior izquierda del sprite,
@@ -292,6 +346,7 @@ void SimaActors_InitPlayer(u8 floor)
     sPlayerHP = SIMA_PLAYER_MAX_HP;   // vida solo se fija al montar el modo, no en cada piso (ver WarpToFloor)
     sPlayerInvulnTimer = 0;
     sAttackTimer = 0;   // listo para atacar (Tarea 7)
+    sPlayerKnockbackTimer = 0;   // sin empujon en curso
 
     LoadSpriteSheet(&sSheet_SimaPlayer);
     LoadSpritePalette(&sPal_SimaPlayer);
@@ -349,6 +404,10 @@ void SimaActors_WarpToFloor(u8 floor)
     // aparecer en el spawn nuevo con el arma ya afuera (o a mitad de
     // cooldown de un golpe que ni siquiera se vio) sería confuso.
     sAttackTimer = 0;
+    // Empujon en curso tampoco se arrastra al piso nuevo, mismo motivo que
+    // el golpe: no tendria sentido aparecer en el spawn nuevo todavia
+    // deslizandose por un golpe que se recibio en el piso anterior.
+    sPlayerKnockbackTimer = 0;
     if (sWeaponActive)
         gSprites[sWeaponSpriteId].invisible = TRUE;
 
@@ -364,10 +423,41 @@ void SimaActors_UpdatePlayer(void)
     if (!sPlayerActive)
         return;  // SimaActors_InitPlayer no se llamó, o CreateSprite se quedó sin presupuesto (MAX_SPRITES)
 
+    // Empujón por daño: máxima prioridad, por encima incluso de un golpe
+    // propio en curso (si te golpean a mitad de tu propio ataque, el
+    // ataque queda congelado donde estaba -- ver UpdateAttack -- y se
+    // retoma solo al terminar el empujón; caso raro, aceptable). El
+    // jugador NO lee el D-pad ni A mientras esto dure: control perdido de
+    // verdad, no solo movimiento bloqueado.
+    if (sPlayerKnockbackTimer > 0)
+    {
+        u8 stepIdx = (u8)(KNOCKBACK_FRAMES - sPlayerKnockbackTimer);
+        s16 step = sKnockbackSteps[stepIdx];
+        s16 nx = sPlayerX + (s16)sPlayerKnockbackDirX * step;
+        s16 ny = sPlayerY + (s16)sPlayerKnockbackDirY * step;
+
+        // Misma resolución por eje que el movimiento normal (ver más abajo):
+        // si el empujón es diagonal y un eje choca contra un muro, el otro
+        // eje se sigue aplicando -- el empujón nunca atraviesa una pared,
+        // como pide el encargo, pero tampoco se traba en seco contra una
+        // esquina si solo un lado está bloqueado.
+        if (sPlayerKnockbackDirX != 0 && SimaActors_BoxFits(sPlayerFloor, nx, sPlayerY))
+            sPlayerX = nx;
+        if (sPlayerKnockbackDirY != 0 && SimaActors_BoxFits(sPlayerFloor, sPlayerX, ny))
+            sPlayerY = ny;
+
+        sPlayerKnockbackTimer--;
+        sPlayerMoving = FALSE;   // no animar caminata durante el empujón
+        sPlayerAnimTimer = 0;
+        sPlayerAnimStep = 0;
+        UpdatePlayerSprite();
+        return;
+    }
+
     // Tarea 7: un golpe congela al jugador -- ni se mueve ni cambia de
     // facing mientras el arma está en el aire (windup/activo/recuperación).
     // Evita decidir qué pasa si el jugador gira a mitad de un golpe, y
-    // encaja con PLAYER_SPEED = 1 ("paso deliberado, no arcade"): un golpe
+    // encaja con el tono del juego ("paso deliberado, no arcade"): un golpe
     // es un compromiso breve, no algo que se cancela con el D-pad.
     if (sAttackTimer > 0)
     {
@@ -390,42 +480,51 @@ void SimaActors_UpdatePlayer(void)
         return;
     }
 
-    // Un solo eje por frame: arriba/abajo tiene prioridad sobre izq/der si
-    // se pulsan varias direcciones a la vez. Evita el movimiento diagonal,
-    // que ni el arte (4 direcciones, no 8) ni la lógica de colisión de abajo
-    // (una casilla por eje) contemplan.
+    // Ambos ejes a la vez: arriba/abajo e izquierda/derecha ya no son
+    // exclusivos entre si (cada grupo lo sigue siendo dentro de si mismo --
+    // no tiene sentido pulsar ARRIBA y ABAJO a la vez), asi que pulsar dos
+    // D-pad perpendiculares mueve en diagonal. El facing para el sprite
+    // (que solo tiene 4 poses, no 8) prioriza vertical sobre horizontal en
+    // diagonal, igual que la prioridad que ya tenia el codigo anterior.
     if (JOY_HELD(DPAD_UP))
-    {
-        newFacing = SIMA_FACING_UP;
         dy = -PLAYER_SPEED;
-    }
     else if (JOY_HELD(DPAD_DOWN))
-    {
-        newFacing = SIMA_FACING_DOWN;
         dy = PLAYER_SPEED;
-    }
-    else if (JOY_HELD(DPAD_LEFT))
-    {
-        newFacing = SIMA_FACING_LEFT;
+
+    if (JOY_HELD(DPAD_LEFT))
         dx = -PLAYER_SPEED;
-    }
     else if (JOY_HELD(DPAD_RIGHT))
-    {
-        newFacing = SIMA_FACING_RIGHT;
         dx = PLAYER_SPEED;
-    }
+
+    if (dy < 0)
+        newFacing = SIMA_FACING_UP;
+    else if (dy > 0)
+        newFacing = SIMA_FACING_DOWN;
+    else if (dx < 0)
+        newFacing = SIMA_FACING_LEFT;
+    else if (dx > 0)
+        newFacing = SIMA_FACING_RIGHT;
 
     if (dx != 0 || dy != 0)
     {
         s16 nx = sPlayerX + dx;
         s16 ny = sPlayerY + dy;
 
-        // Colisión comprobada ANTES de aplicar el desplazamiento: si no
-        // cabe, el jugador igual gira a mirar hacia el muro (newFacing ya
-        // quedó fijado arriba) pero no se desplaza ni anima el paso.
-        if (SimaActors_BoxFits(sPlayerFloor, nx, ny))
+        // Cada eje se comprueba POR SEPARADO contra la colision, no la
+        // diagonal completa de una vez: asi, al chocar contra una pared en
+        // diagonal, el jugador resbala por ella en el eje que si esta libre
+        // en vez de quedarse clavado en la esquina (que es lo que pasaria si
+        // se exigiera que (nx, ny) cupiera entera). El eje Y se comprueba ya
+        // con la X actualizada (si se aplico) -- es la forma estandar de
+        // resolver "mover y resbalar" y coincide con como se movia antes con
+        // un solo eje (ese caso ya funcionaba igual, con el otro eje en 0).
+        if (dx != 0 && SimaActors_BoxFits(sPlayerFloor, nx, sPlayerY))
         {
             sPlayerX = nx;
+            moved = TRUE;
+        }
+        if (dy != 0 && SimaActors_BoxFits(sPlayerFloor, sPlayerX, ny))
+        {
             sPlayerY = ny;
             moved = TRUE;
         }
@@ -459,6 +558,35 @@ void SimaActors_GetPlayerTile(s8 *x, s8 *y)
     // posteriores (escaleras, disparadores, enemigos).
     *x = (s8)((sPlayerX + 8) / 16);
     *y = (s8)((sPlayerY + 8) / 16);
+}
+
+// Arranca el empujón (Tarea de mejora de sensación): fija dirección y
+// cronómetro a partir de la posición del enemigo que tocó al jugador.
+// Llamada desde SimaActors_UpdateEnemies (el punto donde ya se sabe qué
+// enemigo conectó), no desde SimaActors_UpdatePlayer -- que solo CONSUME el
+// cronómetro, nunca lo arranca, para que las dos mitades del sistema (quién
+// empieza el empujón, quién lo aplica) no se pisen.
+static void StartPlayerKnockback(s16 enemyX, s16 enemyY)
+{
+    s16 fromX = sPlayerX - enemyX;
+    s16 fromY = sPlayerY - enemyY;
+
+    // Solo el signo importa aquí (la magnitud por frame la da
+    // sKnockbackSteps): -1/0/+1 en cada eje, puede salir diagonal si el
+    // enemigo no estaba alineado con el jugador en ningún eje -- el
+    // movimiento del jugador ya soporta diagonales (ver arriba), así que el
+    // empujón las hereda gratis.
+    sPlayerKnockbackDirX = (fromX > 0) ? 1 : (fromX < 0) ? -1 : 0;
+    sPlayerKnockbackDirY = (fromY > 0) ? 1 : (fromY < 0) ? -1 : 0;
+
+    // Caso degenerado (centros exactamente coincidentes, no debería pasar
+    // con dos cajas de 12x12 solapadas pero comprobado por si acaso): sin
+    // dirección no hay a dónde empujar, mejor no arrancar el cronómetro que
+    // "empujar" en (0, 0) durante KNOCKBACK_FRAMES sin mover un píxel.
+    if (sPlayerKnockbackDirX == 0 && sPlayerKnockbackDirY == 0)
+        return;
+
+    sPlayerKnockbackTimer = KNOCKBACK_FRAMES;
 }
 
 // Escribe en el sprite el frame/flip que corresponde al facing y estado de
@@ -537,8 +665,34 @@ static void UpdateAttack(void)
     }
 
     SimaActors_WeaponHitbox(sAttackFacing, sPlayerX, sPlayerY, &hitX, &hitY);
-    gSprites[sWeaponSpriteId].x = hitX + 8;
-    gSprites[sWeaponSpriteId].y = hitY + 8;
+    // Arco de barrido (mejora de sensación, ver el comentario de arriba de
+    // este bloque): desplazamiento COSMÉTICO perpendicular a la dirección
+    // del golpe, hacia un lado durante el windup y hacia el lado contrario
+    // durante el frame activo -- simula que el arma "viene de un lado y
+    // termina en el otro" en vez de solo aparecer/desaparecer en el mismo
+    // sitio. No toca hitX/hitY (la caja real de golpe, comprobada por
+    // SimaActors_UpdateEnemies vía AttackHitboxActive/SimaActors_WeaponHitbox,
+    // sigue siendo exactamente la casilla adyacente completa) -- es puro
+    // dibujo, no cambia a qué enemigos alcanza el golpe. NÚMERO DE GUSTO:
+    // ATTACK_SWEEP_PX, ver su definición.
+    {
+        s16 sweepX = 0, sweepY = 0;
+        s16 sweep = (sAttackTimer <= ATTACK_WINDUP_FRAMES) ? -ATTACK_SWEEP_PX : ATTACK_SWEEP_PX;
+
+        switch (sAttackFacing)
+        {
+        case SIMA_FACING_UP:
+        case SIMA_FACING_DOWN:
+            sweepX = sweep;   // golpe vertical: el barrido se ve en X
+            break;
+        case SIMA_FACING_LEFT:
+        case SIMA_FACING_RIGHT:
+            sweepY = sweep;   // golpe horizontal: el barrido se ve en Y
+            break;
+        }
+        gSprites[sWeaponSpriteId].x = hitX + 8 + sweepX;
+        gSprites[sWeaponSpriteId].y = hitY + 8 + sweepY;
+    }
 
     if (sAttackTimer <= ATTACK_WINDUP_FRAMES)
     {
@@ -562,15 +716,29 @@ static void UpdateAttack(void)
     }
 
     // Orientación por flip de OAM, no por arte nuevo (ver el comentario de
-    // sTmpl_SimaWeapon): el mandoble recortado ya apunta abajo-derecha en su
-    // dibujo original, así que ABAJO/DERECHA lo usan tal cual, ARRIBA lo
-    // voltea en vertical y IZQUIERDA en horizontal. Es una aproximación (el
-    // mismo golpe "sirve" para dos direcciones distintas) deliberada: la
-    // posición del sprite -- sobre la casilla adyacente correcta -- es lo
-    // que de verdad comunica hacia dónde se ataca; el flip es solo pulido.
+    // sTmpl_SimaWeapon): el mandoble recortado apunta en su dibujo original
+    // de mango arriba-izquierda a punta abajo-derecha (↘). Con solo hFlip y
+    // vFlip hay 4 combinaciones posibles, cada una apuntando a una de las 4
+    // diagonales: sin flip ↘, hFlip ↙, vFlip ↗, ambos ↖. Cada diagonal
+    // "sirve" para dos de las cuatro direcciones cardinales (↘ vale para
+    // ABAJO o DERECHA, ↙ para ABAJO o IZQUIERDA, ↗ para ARRIBA o DERECHA, ↖
+    // para ARRIBA o IZQUIERDA) -- CON UNA SOLA COMBINACIÓN NO ALCANZAN LAS 4
+    // DIRECCIONES SIN REPETIR. La asignación de antes (ABAJO y DERECHA sin
+    // flip) repetía ↘ en ambas, que es justo el bug reportado ("abajo y
+    // derecha comparten el mismo dibujo"). Esta asignación en cambio usa las
+    // 4 combinaciones, una por dirección, eligiendo para cada una la
+    // diagonal que SÍ la tiene como componente:
+    //   ABAJO  -> sin flip (↘: abajo+derecha)
+    //   DERECHA -> vFlip   (↗: arriba+derecha)
+    //   ARRIBA -> ambos    (↖: arriba+izquierda)
+    //   IZQUIERDA -> hFlip (↙: abajo+izquierda)
+    // Las 4 quedan visualmente distintas entre sí (nunca dos direcciones con
+    // el mismo par de flips) y cada una apunta hacia SU dirección en al
+    // menos un eje -- la mejor lectura posible sin arte nuevo (ver el
+    // comentario grande sobre weapons.png más arriba en este archivo).
     {
-        bool8 hFlip = (sAttackFacing == SIMA_FACING_LEFT);
-        bool8 vFlip = (sAttackFacing == SIMA_FACING_UP);
+        bool8 hFlip = (sAttackFacing == SIMA_FACING_LEFT) || (sAttackFacing == SIMA_FACING_UP);
+        bool8 vFlip = (sAttackFacing == SIMA_FACING_RIGHT) || (sAttackFacing == SIMA_FACING_UP);
         gSprites[sWeaponSpriteId].oam.matrixNum = (hFlip ? ST_OAM_HFLIP : 0) | (vFlip ? ST_OAM_VFLIP : 0);
     }
 
@@ -901,6 +1069,9 @@ void SimaActors_UpdateEnemies(void)
         {
             sPlayerHP = SimaActors_ApplyDamage(sPlayerHP, SIMA_ENEMY_CONTACT_DAMAGE);
             sPlayerInvulnTimer = SIMA_INVULN_FRAMES;
+            // Retroceso (mejora de sensación): sale despedido en dirección
+            // contraria a ESTE enemigo, el que de verdad conectó.
+            StartPlayerKnockback(sEnemyX[i], sEnemyY[i]);
         }
 
         sprite = &gSprites[sEnemySpriteId[i]];
