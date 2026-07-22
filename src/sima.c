@@ -16,7 +16,9 @@
 // verdad (Tarea 3, graphics/sima/gen.py) y pinta la sala del piso actual con
 // SimaRoom_GetTile (src/sima_rooms.c). El jugador (Tarea 4) vive en
 // src/sima_actors.c: este archivo solo lo inicializa y lo actualiza cada
-// frame desde CB2_SimaMain, sin conocer su representacion interna.
+// frame desde CB2_SimaMain, sin conocer su representacion interna. Pisar una
+// escalera (Tarea 5) funde a negro, repinta BG0 con SimaRoom_NextFloor y
+// recoloca al jugador en el spawn del piso nuevo antes de fundir de vuelta.
 
 // Una pantalla de GBA son 240x160 px. El arte de SIMA usa celdas de 16x16,
 // pero el hardware solo tiene tiles de 8x8 -- cada celda de arte ocupa 2x2
@@ -57,6 +59,32 @@ static const struct BgTemplate sSimaBgTemplates[] = {
      .baseTile = 0},
 };
 
+// Piso que BG0 tiene pintado ahora mismo (Tarea 5). Estatico en .bss, sin
+// inicializador explicito: arranca en 0, que es exactamente el piso con el
+// que CB2_InitSima monta el modo (ver la nota de sima_actors.c sobre por que
+// nunca se inicializan estos estaticos inline con un valor no-cero).
+static u8 sCurrentFloor;
+
+// Maquina de estados del cambio de piso al pisar una escalera: NONE mientras
+// se juega normal, FADE_OUT mientras la pantalla se funde a negro (fase en la
+// que SimaActors_UpdatePlayer se deja de llamar para que el jugador no siga
+// caminando a oscuras), FADE_IN mientras el piso ya cambiado vuelve a
+// aparecer. SIMA_TRANS_NONE vale 0, igual que sCurrentFloor arranca en 0 sin
+// inicializador explicito.
+enum SimaTransitionState
+{
+    SIMA_TRANS_NONE,
+    SIMA_TRANS_FADE_OUT,
+    SIMA_TRANS_FADE_IN,
+};
+
+static u8 sTransitionState;
+
+// Forward: UpdateFloorTransition (mas abajo) repinta la sala al cambiar de
+// piso; DrawRoom se define despues de PlaceCell, mas adelante en este mismo
+// archivo.
+static void DrawRoom(u8 floor);
+
 static void VBlankCB_Sima(void)
 {
     LoadOam();
@@ -64,10 +92,66 @@ static void VBlankCB_Sima(void)
     TransferPlttBuffer();
 }
 
+// Si el jugador esta sobre una escalera y no hay ya un fundido en marcha,
+// arranca el cambio de piso fundiendo a negro. BeginNormalPaletteFade no
+// encola si gPaletteFade.active ya esta activo (ver la nota de
+// minigame_pre.c) -- de ahi el gate explicito, aunque aqui ademas evita
+// relanzar el fundido cada frame mientras dura.
+static void CheckStairs(void)
+{
+    s8 x, y;
+
+    SimaActors_GetPlayerTile(&x, &y);
+    if (SimaRoom_IsStairs(sCurrentFloor, x, y) && !gPaletteFade.active)
+    {
+        BeginNormalPaletteFade(PALETTES_ALL, 0, 0, 16, RGB_BLACK);
+        sTransitionState = SIMA_TRANS_FADE_OUT;
+    }
+}
+
+// Avanza la maquina de estados del cambio de piso. Con la pantalla ya en
+// negro (fin del fundido de salida) es el momento de repintar BG0 y
+// recolocar al jugador SIN que se vea: SimaActors_WarpToFloor, no
+// SimaActors_InitPlayer, porque el sprite ya existe (ver la nota de
+// idempotencia en sima.h).
+static void UpdateFloorTransition(void)
+{
+    switch (sTransitionState)
+    {
+    case SIMA_TRANS_FADE_OUT:
+        if (!gPaletteFade.active)
+        {
+            sCurrentFloor = SimaRoom_NextFloor(sCurrentFloor);
+            DrawRoom(sCurrentFloor);
+            CopyBgTilemapBufferToVram(0);
+            SimaActors_WarpToFloor(sCurrentFloor);
+
+            BeginNormalPaletteFade(PALETTES_ALL, 0, 16, 0, RGB_BLACK);
+            sTransitionState = SIMA_TRANS_FADE_IN;
+        }
+        break;
+
+    case SIMA_TRANS_FADE_IN:
+        if (!gPaletteFade.active)
+            sTransitionState = SIMA_TRANS_NONE;
+        break;
+    }
+}
+
 static void CB2_SimaMain(void)
 {
     RunTasks();
-    SimaActors_UpdatePlayer();
+
+    if (sTransitionState == SIMA_TRANS_NONE)
+    {
+        SimaActors_UpdatePlayer();
+        CheckStairs();
+    }
+    else
+    {
+        UpdateFloorTransition();
+    }
+
     AnimateSprites();
     BuildOamBuffer();
     // Imprescindible aunque esta tarea todavia no imprima nada: sin esto el
@@ -114,9 +198,9 @@ static void PlaceCell(u8 bg, u8 destCol, u8 destRow, u16 sheetTilesWide,
 }
 
 // Pinta en BG0 la sala real de `floor` leyendo SimaRoom_GetTile
-// (src/sima_rooms.c) celda a celda. El movimiento del jugador entre pisos
-// (escaleras) es de una tarea posterior: de momento el modo arranca
-// mostrando siempre el piso 0.
+// (src/sima_rooms.c) celda a celda. Se llama una vez al montar el modo
+// (SetupGraphics) y de nuevo cada vez que UpdateFloorTransition cambia de
+// piso al pisar una escalera (Tarea 5).
 static void DrawRoom(u8 floor)
 {
     s8 x, y;
@@ -147,7 +231,7 @@ static void SetupGraphics(void)
     // sola vez en BG_PLTT_ID(0).
     LoadPalette(sTilesPal, BG_PLTT_ID(0), PLTT_SIZE_4BPP);
 
-    DrawRoom(0);
+    DrawRoom(sCurrentFloor);
     CopyBgTilemapBufferToVram(0);
     CopyBgTilemapBufferToVram(1);
 
@@ -176,12 +260,19 @@ void CB2_InitSima(void)
         break;
 
     case 1:
+        // Reset explicito por si CB2_InitSima se reentra en la misma sesion
+        // de ROM (p. ej. el arranque de depuracion PHANTOM_DEBUG_SIMA): sin
+        // esto, sCurrentFloor/sTransitionState arrastrarian el valor de una
+        // partida anterior en vez de arrancar en el piso 0 sin transicion en
+        // marcha.
+        sCurrentFloor = 0;
+        sTransitionState = SIMA_TRANS_NONE;
+
         SetupGraphics();
-        // Piso 0 fijo: las escaleras todavia no cambian de piso (fuera de
-        // alcance de la Tarea 4). SimaActors_InitPlayer vive en
-        // src/sima_actors.c y coloca el sprite del jugador en el '@' de la
-        // sala (SimaRoom_GetSpawn).
-        SimaActors_InitPlayer(0);
+        // SimaActors_InitPlayer vive en src/sima_actors.c y coloca el sprite
+        // del jugador en el '@' de la sala (SimaRoom_GetSpawn). Las escaleras
+        // cambian de piso via UpdateFloorTransition (Tarea 5).
+        SimaActors_InitPlayer(sCurrentFloor);
         SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_BG0_ON | DISPCNT_BG1_ON | DISPCNT_OBJ_1D_MAP);
 
         // BeginNormalPaletteFade no encola si ya hay un fundido activo (ver

@@ -9,6 +9,12 @@ void CB2_InitSima(void);
 // pixeles con colision por casilla contra SimaRoom_IsSolid.
 void SimaActors_InitPlayer(u8 floor);
 void SimaActors_UpdatePlayer(void);
+// Recoloca al jugador ya existente en el spawn de `floor`, sin volver a
+// LoadSpriteSheet/LoadSpritePalette/CreateSprite (Tarea 5: LoadSpriteSheet no
+// es idempotente -- llamarlo dos veces con el mismo tag pisa/desperdicia
+// memoria de VRAM). Para cambios de piso (escaleras), no para el arranque
+// del modo (eso sigue siendo SimaActors_InitPlayer).
+void SimaActors_WarpToFloor(u8 floor);
 // Casilla que ocupa el centro del sprite del jugador ahora mismo (para
 // logica de tareas posteriores: escaleras, disparadores, enemigos).
 void SimaActors_GetPlayerTile(s8 *x, s8 *y);

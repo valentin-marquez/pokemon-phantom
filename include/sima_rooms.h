@@ -33,4 +33,10 @@ bool8 SimaRoom_IsStairs(u8 floor, s8 x, s8 y);
 // Busca el spawn ('@') del piso y lo escribe en outX/outY.
 void SimaRoom_GetSpawn(u8 floor, s8 *outX, s8 *outY);
 
+// Piso al que baja la escalera de `floor`, saturando en el ultimo
+// (SIMA_FLOOR_COUNT - 1): no hay piso mas alla de sFloors, asi que pisar la
+// escalera del ultimo piso no debe desbordar la tabla (SimaRoom_GetTile la
+// leeria fuera de rango).
+u8 SimaRoom_NextFloor(u8 floor);
+
 #endif // GUARD_SIMA_ROOMS_H

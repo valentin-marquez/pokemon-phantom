@@ -113,3 +113,10 @@ void SimaRoom_GetSpawn(u8 floor, s8 *outX, s8 *outY)
     *outX = 0;
     *outY = 0;
 }
+
+u8 SimaRoom_NextFloor(u8 floor)
+{
+    if (floor + 1 >= SIMA_FLOOR_COUNT)
+        return SIMA_FLOOR_COUNT - 1;
+    return floor + 1;
+}

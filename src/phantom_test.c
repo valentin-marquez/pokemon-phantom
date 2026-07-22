@@ -218,6 +218,16 @@ static void Test_SimaPlayerBoxFits(void)
     PHANTOM_ASSERT(!SimaActors_BoxFits(0, 211, 16), "sima-box-blocked-1px");
 }
 
+// Test 9 (Task 5): la progresion de pisos satura en el ultimo. Si desbordara,
+// SimaRoom_GetTile leeria fuera de la tabla de salas.
+static void Test_SimaFloorProgression(void)
+{
+    PHANTOM_ASSERT(SimaRoom_NextFloor(0) == 1, "sima-floor-0-to-1");
+    PHANTOM_ASSERT(SimaRoom_NextFloor(1) == 2, "sima-floor-1-to-2");
+    PHANTOM_ASSERT(SimaRoom_NextFloor(SIMA_FLOOR_COUNT - 1) == SIMA_FLOOR_COUNT - 1,
+                   "sima-floor-saturates");
+}
+
 void PhantomTest_Run(void)
 {
     PHANTOM_CHECKPOINT("suite-start");
@@ -234,6 +244,7 @@ void PhantomTest_Run(void)
     Test_PhantomExecutionSeen();
     Test_SimaRoomsValid();
     Test_SimaPlayerBoxFits();
+    Test_SimaFloorProgression();
     PHANTOM_CHECKPOINT("suite-end");
     PhantomTest_Finish(gPhantomTestFailed);
 }

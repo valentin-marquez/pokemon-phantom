@@ -164,6 +164,30 @@ void SimaActors_InitPlayer(u8 floor)
         UpdatePlayerSprite();
 }
 
+void SimaActors_WarpToFloor(u8 floor)
+{
+    s8 spawnX, spawnY;
+
+    if (!sPlayerActive)
+        return;  // sin sprite que recolocar (ver el guard de SimaActors_UpdatePlayer)
+
+    SimaRoom_GetSpawn(floor, &spawnX, &spawnY);
+
+    // Mismo estado que fija SimaActors_InitPlayer, salvo que aqui NO se toca
+    // el sprite (sheet/paleta/CreateSprite): se reutiliza el que ya existe,
+    // solo se le cambian piso/posicion/facing y se sincroniza con
+    // UpdatePlayerSprite.
+    sPlayerFloor = floor;
+    sPlayerX = (s16)spawnX * 16;
+    sPlayerY = (s16)spawnY * 16;
+    sPlayerFacing = SIMA_FACING_DOWN;
+    sPlayerMoving = FALSE;
+    sPlayerAnimStep = 0;
+    sPlayerAnimTimer = 0;
+
+    UpdatePlayerSprite();
+}
+
 void SimaActors_UpdatePlayer(void)
 {
     u8 newFacing = sPlayerFacing;
