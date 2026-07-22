@@ -309,6 +309,20 @@ $(FONTGFXDIR)/frlg_female.fwjpnfont: $(FONTGFXDIR)/japanese_frlg_female.png
 graphics/sima/player_walk.4bpp: %.4bpp: %.png
 	$(GFX) $< $@ -mwidth 2 -mheight 2
 
+# rat.png/bat.png/slime.png (Tarea 6) son hojas de enemigo de 4x6 celdas de
+# 16x16 (64x96 px) ya reindexadas por graphics/sima/gen.py, sin recortar (a
+# diferencia de player_walk.png): src/sima_actors.c usa toda la hoja como un
+# OBJ, así que necesitan el mismo -mwidth/-mheight que player_walk.4bpp para
+# que cada celda de 16x16 quede como 4 tiles de hardware contiguos.
+graphics/sima/rat.4bpp: %.4bpp: %.png
+	$(GFX) $< $@ -mwidth 2 -mheight 2
+
+graphics/sima/bat.4bpp: %.4bpp: %.png
+	$(GFX) $< $@ -mwidth 2 -mheight 2
+
+graphics/sima/slime.4bpp: %.4bpp: %.png
+	$(GFX) $< $@ -mwidth 2 -mheight 2
+
 
 ### Miscellaneous ###
 

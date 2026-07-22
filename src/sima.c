@@ -28,6 +28,12 @@
 
 static const u32 sTilesGfx[] = INCBIN_U32("graphics/sima/tiles.4bpp");
 static const u16 sTilesPal[] = INCBIN_U16("graphics/sima/grounds.gbapal");
+// HUD de corazones (Tarea 6): 2 celdas de 16x16 (corazón lleno/vacío)
+// recortadas de hud.png por graphics/sima/gen.py (generate_hud_hearts), no
+// la hoja de 8x9 completa -- esa serían 288 tiles de hardware (9 KB) contra
+// los 8 que hacen falta, y BG1 comparte char block con los mapblocks de
+// BG0/BG1 (ver el aviso de VRAM junto a sSimaBgTemplates, abajo).
+static const u32 sHudGfx[] = INCBIN_U32("graphics/sima/hud_hearts.4bpp");
 // La paleta es la unica de SIMA (indice 0 transparente + 4 tonos, verificada
 // en la Tarea 1 para las 10 hojas); grounds.gbapal vale para tiles.4bpp
 // tambien porque graphics/sima/gen.py recorta sin recuantizar.
@@ -51,7 +57,18 @@ static const struct BgTemplate sSimaBgTemplates[] = {
      .paletteMode = 0,
      .priority = 1,
      .baseTile = 0},
-    // BG1: HUD/texto (Tareas 6 y 9). De momento se monta vacio.
+    // BG1: HUD/texto. Tarea 6 lo usa para los corazones de vida (ver
+    // DrawHud, más abajo); Tarea 9 añadirá el marcador encima.
+    //
+    // AVISO DE VRAM (hallado en revisión de la Tarea 5): el char block de
+    // este BG (índice 3) empieza en 0xC000 y ocupa 16 KB (hasta 0xFFFF), lo
+    // que SE SOLAPA con los mapblocks de BG0 (índice 31, en 0xF800-0xFFFF) y
+    // de este mismo BG1 (índice 30, en 0xF000-0xF7FF). Hay 0xF000-0xC000 =
+    // 0x3000 bytes = 384 tiles de 4bpp de margen antes de pisarlos. Los 8
+    // tiles de hud_hearts.4bpp (Tarea 6) se quedan cortísimos de ese límite;
+    // si un HUD futuro carga muchos más tiles aquí, recalcular este margen
+    // ANTES de añadirlos, o mover charBaseIndex a un bloque que no comparta
+    // cola de VRAM con los mapblocks (p. ej. 0 o 1).
     {.bg = 1,
      .charBaseIndex = 3,
      .mapBaseIndex = 30,
@@ -82,10 +99,23 @@ enum SimaTransitionState
 
 static u8 sTransitionState;
 
+// Tarea 6: si la escalera del piso actual YA está pintada como tal en BG0
+// (frente a tapada como suelo llano mientras queden enemigos vivos).
+// DrawRoom la fija cada vez que pinta la sala; UpdateStairsVisibility la usa
+// para detectar el momento exacto en que hace falta repintar.
+static bool8 sStairsVisible;
+
+// Último HP del jugador ya pintado en BG1 (Tarea 6, ver DrawHud). 0xFF fuerza
+// el primer pintado (SIMA_PLAYER_MAX_HP nunca llega a 0xFF).
+static u8 sHudDrawnHP;
+
 // Forward: UpdateFloorTransition (mas abajo) repinta la sala al cambiar de
-// piso; DrawRoom se define despues de PlaceCell, mas adelante en este mismo
-// archivo.
+// piso; DrawRoom, UpdateStairsVisibility y DrawHud se definen despues de
+// PlaceCell, mas adelante en este mismo archivo, pero CB2_SimaMain (que las
+// llama) va antes.
 static void DrawRoom(u8 floor);
+static void UpdateStairsVisibility(void);
+static void DrawHud(void);
 
 static void VBlankCB_Sima(void)
 {
@@ -104,7 +134,12 @@ static void CheckStairs(void)
     s8 x, y;
 
     SimaActors_GetPlayerTile(&x, &y);
-    if (SimaRoom_IsStairs(sCurrentFloor, x, y) && !gPaletteFade.active)
+    // Tarea 6: pisar la escalera solo hace algo si ya está abierta (todos
+    // los enemigos del piso muertos). SimaRoom_IsStairs por sí sola ya no
+    // basta -- es geometría de sala, no si la escalera funciona todavía.
+    if (SimaRoom_IsStairs(sCurrentFloor, x, y)
+        && SimaActors_StairsUnlocked(SimaActors_GetAliveEnemyCount())
+        && !gPaletteFade.active)
     {
         BeginNormalPaletteFade(PALETTES_ALL, 0, 0, 16, RGB_BLACK);
         sTransitionState = SIMA_TRANS_FADE_OUT;
@@ -147,6 +182,8 @@ static void CB2_SimaMain(void)
     if (sTransitionState == SIMA_TRANS_NONE)
     {
         SimaActors_UpdatePlayer();
+        SimaActors_UpdateEnemies();
+        UpdateStairsVisibility();
         CheckStairs();
     }
     else
@@ -154,6 +191,7 @@ static void CB2_SimaMain(void)
         UpdateFloorTransition();
     }
 
+    DrawHud();
     AnimateSprites();
     BuildOamBuffer();
     // Imprescindible aunque esta tarea todavia no imprima nada: sin esto el
@@ -208,16 +246,85 @@ static void PlaceCell(u8 bg, u8 destCol, u8 destRow, u16 sheetTilesWide,
 static void DrawRoom(u8 floor)
 {
     s8 x, y;
+    s8 stx, sty;
     u16 sheetTilesWide = SimaRoom_GetSheetTilesWide();
+    // Tarea 6, cambio de diseño: la escalera no se pinta como tal mientras
+    // quede algún enemigo vivo en el piso -- se dibuja como suelo llano y no
+    // hace nada al pisarla (ver CheckStairs). SimaActors_StairsUnlocked es
+    // la ÚNICA función que decide esto; aquí solo se lee su resultado.
+    bool8 stairsUnlocked = SimaActors_StairsUnlocked(SimaActors_GetAliveEnemyCount());
+
+    SimaRoom_GetStairs(floor, &stx, &sty);
 
     for (y = 0; y < SIMA_ROOM_H; y++)
     {
         for (x = 0; x < SIMA_ROOM_W; x++)
         {
-            u16 tileGfx = SimaRoom_GetTileGfx(floor, x, y);
+            u16 tileGfx;
+            if (x == stx && y == sty && !stairsUnlocked)
+                tileGfx = SimaRoom_GetHiddenStairsGfx(floor);
+            else
+                tileGfx = SimaRoom_GetTileGfx(floor, x, y);
             PlaceCell(0, x, y, sheetTilesWide, 0, (u8)tileGfx, 0);
         }
     }
+
+    sStairsVisible = stairsUnlocked;
+}
+
+// Si el estado de "escalera abierta" cambió desde el último frame, repinta
+// la sala entera para que la escalera aparezca. Esto -- no una animación,
+// no un aviso previo -- es la decisión de diseño tomada: la escalera
+// APARECE DE GOLPE al morir el último enemigo. Reutiliza DrawRoom (que ya
+// recorre las 15x10 celdas al montar el modo o cambiar de piso) en vez de
+// repintar solo la celda de la escalera: mismo resultado, sin duplicar la
+// lógica de qué gfx corresponde a cada celda. Es barato porque solo pasa
+// UNA VEZ, en el frame exacto en que cae el último enemigo.
+static void UpdateStairsVisibility(void)
+{
+    bool8 unlocked = SimaActors_StairsUnlocked(SimaActors_GetAliveEnemyCount());
+
+    if (unlocked != sStairsVisible)
+    {
+        DrawRoom(sCurrentFloor);
+        CopyBgTilemapBufferToVram(0);
+    }
+}
+
+// Corazones de vida en BG1 (Tarea 6). hud_hearts.4bpp trae 2 celdas de 16x16
+// en fila (llena, vacía -- ver graphics/sima/gen.py), así que su
+// "sheetTilesWide" para PlaceCell son 2 celdas * 2 tiles = 4.
+#define HUD_HEARTS_SHEET_TILES_WIDE 4
+#define HUD_HEART_FULL_CELL  0
+#define HUD_HEART_EMPTY_CELL 1
+
+// Esquina SUPERIOR DERECHA, no la izquierda: BG1 tiene prioridad 0 (por
+// delante de BG0 Y de los sprites, que van a prioridad 1 -- ver
+// sSimaBgTemplates), así que los corazones tapan literalmente lo que haya
+// debajo. Comprobado en la captura de esta tarea: en la esquina superior
+// IZQUIERDA vive el arco de entrada del piso 1 (columna 1 de la fila 0, ver
+// sRoomTileGfx en src/sima_rooms_data.h) -- justo donde spawnea el jugador
+// -- así que ahí los corazones lo tapaban por completo. La esquina derecha
+// (columnas 12-14 de la fila 0) es cenefa de muro en el piso 1, sin nada
+// dinámico encima; no hay garantía de que siga siéndolo en pisos futuros
+// (2/3 aún no están dibujados en el editor), pero es la mejor apuesta hoy.
+#define HUD_HEARTS_COL_START (SIMA_ROOM_W - SIMA_PLAYER_MAX_HP)
+
+static void DrawHud(void)
+{
+    u8 hp = SimaActors_GetPlayerHP();
+    u8 i;
+
+    if (hp == sHudDrawnHP)
+        return;  // nada cambió: no tocar VRAM cada frame por nada
+
+    for (i = 0; i < SIMA_PLAYER_MAX_HP; i++)
+    {
+        u8 cell = (i < hp) ? HUD_HEART_FULL_CELL : HUD_HEART_EMPTY_CELL;
+        PlaceCell(1, HUD_HEARTS_COL_START + i, 0, HUD_HEARTS_SHEET_TILES_WIDE, 0, cell, 0);
+    }
+    CopyBgTilemapBufferToVram(1);
+    sHudDrawnHP = hp;
 }
 
 static void SetupGraphics(void)
@@ -231,9 +338,15 @@ static void SetupGraphics(void)
     // no las hojas grounds/walls completas -- no caben en el indice de 10
     // bits de una entrada de tilemap (ver graphics/sima/gen.py).
     LoadBgTiles(0, sTilesGfx, sizeof(sTilesGfx), 0);
+    // HUD de corazones (Tarea 6): 8 tiles de hardware en el char block de
+    // BG1 -- muy por debajo del margen de 384 antes de pisar los mapblocks
+    // (ver el aviso de VRAM junto a sSimaBgTemplates).
+    LoadBgTiles(1, sHudGfx, sizeof(sHudGfx), 0);
 
     // Paleta unica de SIMA (indice 0 transparente + 4 tonos): se carga una
-    // sola vez en BG_PLTT_ID(0).
+    // sola vez en BG_PLTT_ID(0). Los corazones del HUD usan la misma paleta
+    // (misma tabla de reindexado en graphics/sima/gen.py), así que no hace
+    // falta cargar una segunda.
     LoadPalette(sTilesPal, BG_PLTT_ID(0), PLTT_SIZE_4BPP);
 
     DrawRoom(sCurrentFloor);
@@ -272,7 +385,14 @@ void CB2_InitSima(void)
         // marcha.
         sCurrentFloor = 0;
         sTransitionState = SIMA_TRANS_NONE;
+        sHudDrawnHP = 0xFF;   // fuerza el primer pintado del HUD (ver DrawHud)
 
+        // Los enemigos tienen que existir ANTES de pintar la sala:
+        // SetupGraphics (más abajo) llama a DrawRoom, que consulta
+        // SimaActors_GetAliveEnemyCount para decidir si la escalera se ve.
+        // Sin este orden, DrawRoom leería 0 enemigos vivos (el .bss arranca
+        // en 0) y pintaría la escalera abierta desde el primer frame.
+        SimaActors_InitEnemies(sCurrentFloor);
         SetupGraphics();
         // SimaActors_InitPlayer vive en src/sima_actors.c y coloca el sprite
         // del jugador en el '@' de la sala (SimaRoom_GetSpawn). Las escaleras

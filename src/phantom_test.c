@@ -300,6 +300,31 @@ static void Test_SimaFloorProgression(void)
                    "sima-floor-saturates");
 }
 
+// Test 10 (Tarea 6): el daño satura en 0. Un underflow en u8 daria 255 de
+// vida y haria al jugador inmortal justo cuando deberia morir.
+static void Test_SimaDamage(void)
+{
+    PHANTOM_ASSERT(SimaActors_ApplyDamage(3, 1) == 2, "sima-damage-normal");
+    PHANTOM_ASSERT(SimaActors_ApplyDamage(1, 1) == 0, "sima-damage-to-zero");
+    PHANTOM_ASSERT(SimaActors_ApplyDamage(1, 5) == 0, "sima-damage-saturates");
+    PHANTOM_ASSERT(SimaActors_ApplyDamage(0, 1) == 0, "sima-damage-from-zero");
+}
+
+// Test 11 (Tarea 6, cambio de diseño): la escalera esta cerrada mientras
+// quede algun enemigo vivo y abierta solo con 0. Pura, sin sprites -- ver el
+// comentario junto a SimaActors_StairsUnlocked (src/sima_actors.c) sobre por
+// que esta decision de diseño vive aislada en una sola linea. Se añade
+// tambien una comprobacion de la sala real: el piso 1 tiene que seguir
+// teniendo sus 3 enemigos obligatorios, o esta mecanica no tendria nada que
+// vigilar.
+static void Test_SimaStairsUnlocked(void)
+{
+    PHANTOM_ASSERT(!SimaActors_StairsUnlocked(3), "sima-stairs-locked-with-enemies");
+    PHANTOM_ASSERT(!SimaActors_StairsUnlocked(1), "sima-stairs-locked-with-one-enemy");
+    PHANTOM_ASSERT(SimaActors_StairsUnlocked(0), "sima-stairs-unlocked-no-enemies");
+    PHANTOM_ASSERT(SimaRoom_GetEnemyCount(0) == 3, "sima-floor0-three-enemies");
+}
+
 void PhantomTest_Run(void)
 {
     PHANTOM_CHECKPOINT("suite-start");
@@ -317,6 +342,8 @@ void PhantomTest_Run(void)
     Test_SimaRoomsValid();
     Test_SimaPlayerBoxFits();
     Test_SimaFloorProgression();
+    Test_SimaDamage();
+    Test_SimaStairsUnlocked();
     PHANTOM_CHECKPOINT("suite-end");
     PhantomTest_Finish(gPhantomTestFailed);
 }

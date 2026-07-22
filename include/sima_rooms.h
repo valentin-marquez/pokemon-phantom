@@ -63,6 +63,22 @@ u8 SimaRoom_GetEnemyCount(u8 floor);
 // Fuera de rango escribe {0, 0}.
 void SimaRoom_GetEnemy(u8 floor, u8 index, s8 *outX, s8 *outY);
 
+// Casilla de la escalera del piso (siempre existe: graphics/sima/rooms.py
+// aborta si un piso tiene spawn pero no escalera). Se expone ademas de
+// SimaRoom_IsStairs porque la Tarea 6 necesita la coordenada exacta para
+// repintar esa unica celda cuando la escalera aparece (ver src/sima.c).
+void SimaRoom_GetStairs(u8 floor, s8 *outX, s8 *outY);
+
+// Celda grafica que debe pintarse EN LUGAR de la escalera mientras sigue
+// cerrada (Tarea 6: la escalera no aparece hasta que caen todos los
+// enemigos del piso). El atlas no tiene una celda "solo suelo" para la
+// posicion exacta de la escalera -- graphics/sima/rooms.py compone base+prop
+// en un unico tile compuesto -- asi que se usa el gfx de una casilla de
+// suelo vecina (mismo suelo base, sin el prop de la escalera encima). Si
+// ninguna vecina es suelo transitable, cae al suelo del spawn (que
+// Test_SimaRoomsValid ya certifica transitable) como red de seguridad.
+u16 SimaRoom_GetHiddenStairsGfx(u8 floor);
+
 // Ancho, en tiles de hardware de 8x8, de la hoja graphics/sima/tiles.png
 // (el atlas de celdas compuestas). src/sima.c la necesita como
 // `sheetTilesWide` de PlaceCell; vive aqui y no como macro publica porque

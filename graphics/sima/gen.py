@@ -183,6 +183,27 @@ def generate_player_walk():
     print(f"player_walk.png  ({out.width}x{out.height})")
 
 
+# Corazones del HUD (Tarea 6): igual que generate_tiles() para las celdas de
+# sala, se recortan solo las 2 celdas de hud.png que el HUD usa de verdad
+# (corazon lleno y corazon vacio, columnas 0 y 2 de la fila 0 de la hoja de
+# 8x9 celdas) en vez de cargar la hoja completa -- esa serian 288 tiles de
+# hardware (9 KB) contra los 8 que hacen falta, y BG1 comparte char block
+# con los mapblocks de BG0/BG1 (ver el aviso de VRAM en src/sima.c).
+HUD_HEART_CELLS = [(0, 0), (2, 0)]  # (col, row) en celdas de 16x16: lleno, vacio
+
+
+def generate_hud_hearts():
+    src_path = os.path.join(OUT, "hud.png")
+    src = Image.open(src_path)
+    out = Image.new("P", (16 * len(HUD_HEART_CELLS), 16), 0)
+    out.putpalette(src.getpalette())
+    for i, (col, row) in enumerate(HUD_HEART_CELLS):
+        cell = src.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
+        out.paste(cell, (i * 16, 0))
+    out.save(os.path.join(OUT, "hud_hearts.png"))
+    print(f"hud_hearts.png  ({out.width}x{out.height})")
+
+
 def main():
     root = sys.argv[1] if len(sys.argv) > 1 else SRC_DEFAULT
     missing = [p for p in ASSETS if not os.path.exists(os.path.join(root, p))]
@@ -192,6 +213,7 @@ def main():
         convert(os.path.join(root, rel), name)
     generate_tiles()
     generate_player_walk()
+    generate_hud_hearts()
 
 
 if __name__ == "__main__":

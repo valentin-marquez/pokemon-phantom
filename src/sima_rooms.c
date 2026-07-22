@@ -99,3 +99,46 @@ u16 SimaRoom_GetSheetTilesWide(void)
 {
     return SIMA_ROOMS_TILE_COUNT * 2;
 }
+
+void SimaRoom_GetStairs(u8 floor, s8 *outX, s8 *outY)
+{
+    if (floor >= SIMA_FLOOR_COUNT)
+    {
+        *outX = 0;
+        *outY = 0;
+        return;
+    }
+
+    *outX = sRoomStairs[floor][0];
+    *outY = sRoomStairs[floor][1];
+}
+
+u16 SimaRoom_GetHiddenStairsGfx(u8 floor)
+{
+    static const s8 sDx[4] = {1, -1, 0, 0};
+    static const s8 sDy[4] = {0, 0, 1, -1};
+    s8 sx, sy;
+    u8 dir;
+
+    if (floor >= SIMA_FLOOR_COUNT)
+        return 0;
+
+    sx = sRoomStairs[floor][0];
+    sy = sRoomStairs[floor][1];
+
+    for (dir = 0; dir < 4; dir++)
+    {
+        s8 nx = sx + sDx[dir];
+        s8 ny = sy + sDy[dir];
+        if (SimaRoom_GetTile(floor, nx, ny) == SIMA_TILE_FLOOR)
+            return SimaRoom_GetTileGfx(floor, nx, ny);
+    }
+
+    // Red de seguridad (no se da en las salas reales de hoy): si la escalera
+    // no tiene ninguna vecina de suelo, usar el suelo del spawn.
+    {
+        s8 spawnX, spawnY;
+        SimaRoom_GetSpawn(floor, &spawnX, &spawnY);
+        return SimaRoom_GetTileGfx(floor, spawnX, spawnY);
+    }
+}
