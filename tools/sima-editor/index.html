@@ -345,7 +345,7 @@ function exportData() {
 
 document.getElementById('export').onclick = exportData;
 document.getElementById('copy').onclick = async () => {
-  if (!io.value) exportData();
+  exportData();   // siempre: si no, se copia un export viejo
   try { await navigator.clipboard.writeText(io.value); ioinfo.textContent = 'Copiado.'; ioinfo.className = 'sub'; }
   catch (e) { ioinfo.textContent = 'No se pudo copiar: selecciona el texto a mano.'; ioinfo.className = 'sub warn'; }
 };
@@ -353,7 +353,7 @@ document.getElementById('copy').onclick = async () => {
 // transcripcion a mano ya corrompio un piso entero. El fichero no se puede
 // desalinear.
 document.getElementById('download').onclick = () => {
-  if (!io.value) exportData();
+  exportData();   // siempre: si no, se descarga un export viejo
   const blob = new Blob([io.value], {type: 'application/json'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
