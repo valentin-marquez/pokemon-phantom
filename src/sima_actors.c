@@ -53,13 +53,8 @@ static const u16 sPlayerPal[] = INCBIN_U16("graphics/sima/grounds.gbapal");
 #define FRAME_SIDE_STEP_B (8 * PLAYER_TILES_PER_FRAME)
 #define FRAME_SIDE_STEP_C (9 * PLAYER_TILES_PER_FRAME)
 
-enum SimaFacing
-{
-    SIMA_FACING_DOWN,
-    SIMA_FACING_UP,
-    SIMA_FACING_LEFT,
-    SIMA_FACING_RIGHT,
-};
+// enum SimaFacing vive en include/sima.h desde la Tarea 7 (lo necesita
+// SimaActors_WeaponHitbox, expuesta al harness).
 
 static const struct OamData sOam_SimaPlayer = {
     .affineMode = ST_OAM_AFFINE_OFF,
@@ -88,6 +83,67 @@ static const struct SpriteTemplate sTmpl_SimaPlayer = {
     .affineAnims = gDummySpriteAffineAnimTable,
     .callback = SpriteCallbackDummy,
 };
+
+// ---------------------------------------------------------------------
+// Arma del jugador (Tarea 7): sprite propio de 16x16, dos frames recortados
+// de graphics/sima/weapons.png por graphics/sima/gen.py (generate_weapon) --
+// esa hoja trae decenas de armas en rotaciones pensadas para un motor de 8
+// direcciones con giro por software; no hay una celda limpia "mirando
+// arriba/abajo/izquierda/derecha" para las 4 direcciones de SIMA, así que en
+// vez de eso se recortaron 2 frames de UN solo mandoble en su única
+// orientación diagonal (mango arriba-izquierda, punta abajo-derecha:
+// FRAME_A liso, FRAME_B con el destello de impacto) y aquí se orienta con
+// flips de OAM -- igual que el jugador reutiliza su frame de perfil para
+// izquierda/derecha en vez de tener arte por separado.
+// ---------------------------------------------------------------------
+
+static const u32 sWeaponGfx[] = INCBIN_U32("graphics/sima/weapon.4bpp");
+
+#define TAG_SIMA_WEAPON 0x6004
+
+#define WEAPON_SHEET_FRAMES    2
+#define WEAPON_TILES_PER_FRAME 4  // 16x16 = 2x2 tiles de hardware, igual que jugador/enemigos
+#define FRAME_WEAPON_A (0 * WEAPON_TILES_PER_FRAME)  // mandoble liso (windup)
+#define FRAME_WEAPON_B (1 * WEAPON_TILES_PER_FRAME)  // mandoble + destello (impacto)
+
+static const struct OamData sOam_SimaWeapon = {
+    .affineMode = ST_OAM_AFFINE_OFF,
+    .objMode = ST_OAM_OBJ_NORMAL,
+    .bpp = ST_OAM_4BPP,
+    .shape = SPRITE_SHAPE(16x16),
+    .size = SPRITE_SIZE(16x16),
+    .priority = 1,  // misma capa que jugador/enemigos
+};
+
+static const struct SpriteSheet sSheet_SimaWeapon = {
+    sWeaponGfx, WEAPON_SHEET_FRAMES * WEAPON_TILES_PER_FRAME * TILE_SIZE_4BPP, TAG_SIMA_WEAPON
+};
+
+// paletteTag = TAG_SIMA_PLAYER a propósito, igual que los enemigos: misma
+// paleta única de sprites de SIMA para todo (el pack de armas ya viene en
+// los mismos 4 tonos, verificado al recortar weapon.png).
+static const struct SpriteTemplate sTmpl_SimaWeapon = {
+    .tileTag = TAG_SIMA_WEAPON,
+    .paletteTag = TAG_SIMA_PLAYER,
+    .oam = &sOam_SimaWeapon,
+    .anims = gDummySpriteAnimTable,
+    .images = NULL,
+    .affineAnims = gDummySpriteAffineAnimTable,
+    .callback = SpriteCallbackDummy,
+};
+
+// Cadencia del golpe (Tarea 7): windup -> activo -> recuperación, sumando
+// ATTACK_TOTAL_FRAMES antes de poder volver a atacar. Números elegidos para
+// que el golpe se LEA (el arma es visible unos frames antes de dañar, un
+// telégrafo mínimo) sin ser espameable: JOY_NEW(A) sólo arranca un golpe
+// nuevo con sAttackTimer en 0, así que mantener A pulsado no encadena
+// ataques -- hay que soltar y volver a pulsar, y aun así el jugador espera
+// ATTACK_TOTAL_FRAMES completos (~0.27s a 60Hz) entre golpes. Mismo espíritu
+// que PLAYER_SPEED = 1: "paso deliberado, no arcade".
+#define ATTACK_WINDUP_FRAMES   3  // arma visible (FRAME_A), sin dañar todavía
+#define ATTACK_ACTIVE_FRAMES   4  // arma visible (FRAME_B), caja de golpe activa
+#define ATTACK_RECOVERY_FRAMES 9  // arma oculta, cooldown antes de poder atacar de nuevo
+#define ATTACK_TOTAL_FRAMES (ATTACK_WINDUP_FRAMES + ATTACK_ACTIVE_FRAMES + ATTACK_RECOVERY_FRAMES)
 
 // Caja de colisión, más chica que el sprite completo de 16x16 y centrada en
 // él: deja 2px de margen a cada lado para que doblar una esquina en un
@@ -125,7 +181,21 @@ static u8 sPlayerAnimTimer;
 static u8 sPlayerHP;
 static u8 sPlayerInvulnTimer;  // frames restantes sin poder recibir otro golpe
 
+// Ataque (Tarea 7). sWeaponActive es la misma guarda de presupuesto de
+// sprites que sPlayerActive (por si CreateSprite se queda sin hueco).
+// sAttackTimer en 0 significa "listo para atacar"; 1..ATTACK_TOTAL_FRAMES
+// mientras el golpe está en curso (ver UpdateAttack). sAttackFacing fija la
+// dirección del golpe al iniciarlo, no la lee de sPlayerFacing cada frame:
+// el jugador no puede girar a mitad de un golpe (ver el guard en
+// SimaActors_UpdatePlayer), pero fijarla explícita documenta la intención y
+// evita depender de ese guard si algún día cambia.
+static bool8 sWeaponActive;
+static u8 sWeaponSpriteId;
+static u8 sAttackTimer;
+static u8 sAttackFacing;
+
 static void UpdatePlayerSprite(void);
+static void UpdateAttack(void);
 
 // Función pura: ¿cabe la caja de colisión del jugador (16x16 con el margen
 // de arriba) en la posición (x, y) [esquina superior izquierda del sprite,
@@ -172,6 +242,40 @@ bool8 SimaActors_IsPlayerDead(void)
     return sPlayerHP == 0;
 }
 
+// Función pura (Tarea 7): casilla de 16x16 (misma convención de esquina
+// superior izquierda que SimaActors_BoxFits) que amenaza el arma cuando el
+// jugador -- con su caja en (playerX, playerY) -- ataca mirando `facing`.
+// Siempre la casilla ADYACENTE (un salto de 16px en el eje de la dirección),
+// nunca la propia del jugador: así un golpe no puede autolesionar, y solo
+// alcanza a un enemigo que esté de verdad delante, no a uno que solo
+// comparta casilla por detrás o al lado. Separada de todo estado (no lee
+// sPlayerX/sPlayerY ni sAttackFacing) para que el harness in-ROM la
+// ejercite sin sprites, igual que SimaActors_BoxFits.
+void SimaActors_WeaponHitbox(u8 facing, s16 playerX, s16 playerY, s16 *outX, s16 *outY)
+{
+    s16 x = playerX;
+    s16 y = playerY;
+
+    switch (facing)
+    {
+    case SIMA_FACING_UP:
+        y -= 16;
+        break;
+    case SIMA_FACING_DOWN:
+        y += 16;
+        break;
+    case SIMA_FACING_LEFT:
+        x -= 16;
+        break;
+    case SIMA_FACING_RIGHT:
+        x += 16;
+        break;
+    }
+
+    *outX = x;
+    *outY = y;
+}
+
 void SimaActors_InitPlayer(u8 floor)
 {
     s8 spawnX, spawnY;
@@ -187,6 +291,7 @@ void SimaActors_InitPlayer(u8 floor)
     sPlayerAnimTimer = 0;
     sPlayerHP = SIMA_PLAYER_MAX_HP;   // vida solo se fija al montar el modo, no en cada piso (ver WarpToFloor)
     sPlayerInvulnTimer = 0;
+    sAttackTimer = 0;   // listo para atacar (Tarea 7)
 
     LoadSpriteSheet(&sSheet_SimaPlayer);
     LoadSpritePalette(&sPal_SimaPlayer);
@@ -199,6 +304,20 @@ void SimaActors_InitPlayer(u8 floor)
 
     if (sPlayerActive)
         UpdatePlayerSprite();
+
+    // Arma (Tarea 7): un sprite más, creado una sola vez aquí (mismo motivo
+    // que sPlayerActive/sEnemyAlive -- LoadSpriteSheet no es idempotente,
+    // ver la nota de cabecera del archivo). Arranca invisible: solo se
+    // muestra durante windup/activo de un golpe (ver UpdateAttack). Con
+    // jugador + 3 enemigos + arma van 5 de los 64 sprites de MAX_SPRITES.
+    LoadSpriteSheet(&sSheet_SimaWeapon);
+    // Paleta ya cargada arriba (sPal_SimaPlayer); LoadSpritePalette es
+    // idempotente por tag, pero el arma ni la vuelve a pedir -- reutiliza la
+    // misma carga del jugador via paletteTag en sTmpl_SimaWeapon.
+    sWeaponSpriteId = CreateSprite(&sTmpl_SimaWeapon, sPlayerX + 8, sPlayerY + 8, 0);
+    sWeaponActive = (sWeaponSpriteId != MAX_SPRITES);
+    if (sWeaponActive)
+        gSprites[sWeaponSpriteId].invisible = TRUE;
 }
 
 void SimaActors_WarpToFloor(u8 floor)
@@ -226,6 +345,12 @@ void SimaActors_WarpToFloor(u8 floor)
     // otros dos. La invulnerabilidad sí se corta: no tiene sentido arrastrar
     // frames de "acabo de recibir un golpe" al piso nuevo.
     sPlayerInvulnTimer = 0;
+    // Golpe en curso tampoco se arrastra al piso nuevo, por la misma razón:
+    // aparecer en el spawn nuevo con el arma ya afuera (o a mitad de
+    // cooldown de un golpe que ni siquiera se vio) sería confuso.
+    sAttackTimer = 0;
+    if (sWeaponActive)
+        gSprites[sWeaponSpriteId].invisible = TRUE;
 
     UpdatePlayerSprite();
 }
@@ -238,6 +363,32 @@ void SimaActors_UpdatePlayer(void)
 
     if (!sPlayerActive)
         return;  // SimaActors_InitPlayer no se llamó, o CreateSprite se quedó sin presupuesto (MAX_SPRITES)
+
+    // Tarea 7: un golpe congela al jugador -- ni se mueve ni cambia de
+    // facing mientras el arma está en el aire (windup/activo/recuperación).
+    // Evita decidir qué pasa si el jugador gira a mitad de un golpe, y
+    // encaja con PLAYER_SPEED = 1 ("paso deliberado, no arcade"): un golpe
+    // es un compromiso breve, no algo que se cancela con el D-pad.
+    if (sAttackTimer > 0)
+    {
+        UpdateAttack();
+        UpdatePlayerSprite();
+        return;
+    }
+
+    // JOY_NEW (no JOY_HELD): mantener A pulsado no encadena golpes, hay que
+    // soltar y volver a pulsar. Junto con el guard de arriba (que ya impide
+    // esto mientras sAttackTimer > 0), es lo que evita machacar A.
+    if (JOY_NEW(A_BUTTON))
+    {
+        // Ataca hacia donde el jugador YA miraba, no hacia el D-pad de este
+        // mismo frame: más predecible que "moverte y atacar" a la vez.
+        sAttackFacing = sPlayerFacing;
+        sAttackTimer = 1;
+        UpdateAttack();
+        UpdatePlayerSprite();
+        return;
+    }
 
     // Un solo eje por frame: arriba/abajo tiene prioridad sobre izq/der si
     // se pulsan varias direcciones a la vez. Evita el movimiento diagonal,
@@ -362,6 +513,85 @@ static void UpdatePlayerSprite(void)
     sprite->invisible = (sPlayerInvulnTimer > 0) && ((sPlayerInvulnTimer / 4) & 1);
 }
 
+// Avanza el golpe en curso (Tarea 7): decide qué frame del arma mostrar (o
+// si se oculta, en recuperación), la coloca sobre la casilla adyacente a
+// sAttackFacing (SimaActors_WeaponHitbox) y cuenta el frame. NO comprueba
+// enemigos -- eso lo hace SimaActors_UpdateEnemies (más abajo en este mismo
+// archivo, con AttackHitboxActive/SimaActors_WeaponHitbox), que ya recorre
+// los enemigos cada frame y tiene sus posiciones a mano; duplicar ese bucle
+// aquí sería la misma información dos veces. sAttackTimer es la ÚNICA
+// fuente de verdad de la fase del golpe: UpdateEnemies solo LEE su valor a
+// través de AttackHitboxActive, nunca lo toca.
+static void UpdateAttack(void)
+{
+    s16 hitX, hitY;
+
+    if (!sWeaponActive)
+    {
+        // Sin sprite de arma (CreateSprite se quedó sin presupuesto): no hay
+        // nada que animar ni golpe que reproducir, pero tampoco hay que
+        // dejar al jugador congelado para siempre esperando un golpe que
+        // nunca se resuelve.
+        sAttackTimer = 0;
+        return;
+    }
+
+    SimaActors_WeaponHitbox(sAttackFacing, sPlayerX, sPlayerY, &hitX, &hitY);
+    gSprites[sWeaponSpriteId].x = hitX + 8;
+    gSprites[sWeaponSpriteId].y = hitY + 8;
+
+    if (sAttackTimer <= ATTACK_WINDUP_FRAMES)
+    {
+        // Windup: el arma ya se ve (telégrafo del golpe) pero todavía no daña.
+        gSprites[sWeaponSpriteId].invisible = FALSE;
+        gSprites[sWeaponSpriteId].oam.tileNum = gSprites[sWeaponSpriteId].sheetTileStart + FRAME_WEAPON_A;
+    }
+    else if (sAttackTimer <= ATTACK_WINDUP_FRAMES + ATTACK_ACTIVE_FRAMES)
+    {
+        // Activo: el destello de impacto, y AttackHitboxActive (usado por
+        // SimaActors_UpdateEnemies) empieza a devolver TRUE en esta misma
+        // ventana -- ver la comprobación exacta ahí, es el mismo rango.
+        gSprites[sWeaponSpriteId].invisible = FALSE;
+        gSprites[sWeaponSpriteId].oam.tileNum = gSprites[sWeaponSpriteId].sheetTileStart + FRAME_WEAPON_B;
+    }
+    else
+    {
+        // Recuperación: el arma ya se guardó, pero el jugador sigue sin
+        // poder atacar hasta que sAttackTimer llegue a ATTACK_TOTAL_FRAMES.
+        gSprites[sWeaponSpriteId].invisible = TRUE;
+    }
+
+    // Orientación por flip de OAM, no por arte nuevo (ver el comentario de
+    // sTmpl_SimaWeapon): el mandoble recortado ya apunta abajo-derecha en su
+    // dibujo original, así que ABAJO/DERECHA lo usan tal cual, ARRIBA lo
+    // voltea en vertical y IZQUIERDA en horizontal. Es una aproximación (el
+    // mismo golpe "sirve" para dos direcciones distintas) deliberada: la
+    // posición del sprite -- sobre la casilla adyacente correcta -- es lo
+    // que de verdad comunica hacia dónde se ataca; el flip es solo pulido.
+    {
+        bool8 hFlip = (sAttackFacing == SIMA_FACING_LEFT);
+        bool8 vFlip = (sAttackFacing == SIMA_FACING_UP);
+        gSprites[sWeaponSpriteId].oam.matrixNum = (hFlip ? ST_OAM_HFLIP : 0) | (vFlip ? ST_OAM_VFLIP : 0);
+    }
+
+    sAttackTimer++;
+    if (sAttackTimer > ATTACK_TOTAL_FRAMES)
+        sAttackTimer = 0;  // cooldown cumplido: listo para el siguiente golpe
+}
+
+// Función pura (Tarea 7): ¿está la caja de golpe del arma activa AHORA
+// MISMO? Envuelve el mismo rango de sAttackTimer que UpdateAttack usa para
+// elegir FRAME_WEAPON_B, para que ambas lecturas de "¿está golpeando?"
+// nunca se puedan desincronizar (una sola definición de la ventana activa).
+// No pura respecto al reloj de la partida (lee sAttackTimer, estado), pero
+// no depende de sprites ni de ningún enemigo -- SimaActors_UpdateEnemies la
+// usa antes de comprobar la caja contra cada enemigo.
+static bool8 AttackHitboxActive(void)
+{
+    return sAttackTimer > ATTACK_WINDUP_FRAMES
+        && sAttackTimer <= ATTACK_WINDUP_FRAMES + ATTACK_ACTIVE_FRAMES;
+}
+
 // ---------------------------------------------------------------------
 // Enemigos (Tarea 6): rata, murciélago y slime en las casillas de
 // SimaRoom_GetEnemy (los '*' del editor visual), con movimiento simple
@@ -385,6 +615,14 @@ static const u32 sSlimeGfx[] = INCBIN_U32("graphics/sima/slime.4bpp");
 #define ENEMY_TILES_PER_FRAME  4  // 16x16 = 2x2 tiles de hardware de 8x8, igual que el jugador
 #define ENEMY_FRAME_IDLE_A (0 * ENEMY_TILES_PER_FRAME)  // celda (0,0) de la hoja
 #define ENEMY_FRAME_IDLE_B (1 * ENEMY_TILES_PER_FRAME)  // celda (0,1): "respira" para las tres criaturas
+// Tarea 7: pose de muerte (aplastada/panza arriba en las tres hojas, visto
+// a ojo -- rat.png/bat.png/slime.png comparten layout de 4x6). Dos celdas
+// adyacentes de la misma fila, no una sola: un frame estático se lee como
+// una imagen congelada más que como "acaba de morir"; alternar entre dos
+// poses casi iguales durante SIMA_ENEMY_DEATH_FRAMES da un tembleque mínimo
+// sin necesitar arte nuevo.
+#define ENEMY_FRAME_DEATH_A (17 * ENEMY_TILES_PER_FRAME)  // celda (4,1)
+#define ENEMY_FRAME_DEATH_B (18 * ENEMY_TILES_PER_FRAME)  // celda (4,2)
 
 enum SimaEnemyKind
 {
@@ -453,7 +691,23 @@ static const struct SpriteTemplate *const sEnemyTemplates[SIMA_ENEMY_KIND_COUNT]
 #define SIMA_ENEMY_CONTACT_DAMAGE 1
 #define SIMA_INVULN_FRAMES       60   // ~1s a 60Hz sin poder recibir otro golpe
 
+// Tarea 7: un enemigo muere de UN golpe -- no hay vida propia por enemigo.
+// Encaja con la regla del proyecto de "sin grinding" (CLAUDE.md): un sistema
+// de aguante por enemigo solo tendría sentido si hubiera algo que farmear
+// para subirlo, y aquí no lo hay. También es lo que literalmente pide el
+// brief ("un enemigo tocado por el arma muere"), sin condición.
+//
+// sEnemyDeathTimer > 0 mientras el cadáver sigue en pantalla reproduciendo
+// ENEMY_FRAME_DEATH_A/B; llega a 0 y SimaActors_UpdateEnemies destruye el
+// sprite. Deliberadamente SEPARADO de sEnemyAlive: el enemigo deja de contar
+// como "vivo" (para SimaActors_StairsUnlocked) en el instante mismo del
+// golpe, no cuando termina la animación -- la escalera no debería esperar a
+// que acabe un efecto cosmético para desbloquearse.
+#define SIMA_ENEMY_DEATH_FRAMES       24   // ~0.4s a 60Hz: cuánto se ve el cadáver antes de destruir el sprite
+#define SIMA_ENEMY_DEATH_ANIM_PERIOD   6   // alterna DEATH_A/DEATH_B cada 6 frames
+
 static bool8 sEnemyAlive[SIMA_MAX_ENEMIES];
+static u8 sEnemyDeathTimer[SIMA_MAX_ENEMIES];  // 0 = no está muriendo (vivo, o ya destruido)
 static u8 sEnemySpriteId[SIMA_MAX_ENEMIES];
 static s16 sEnemyX[SIMA_MAX_ENEMIES];   // esquina superior izquierda del sprite, en píxeles
 static s16 sEnemyY[SIMA_MAX_ENEMIES];
@@ -558,6 +812,11 @@ void SimaActors_InitEnemies(u8 floor)
         {
             sEnemyAlive[i] = FALSE;
         }
+        // Reinicio explícito (Tarea 7), misma razón que sCurrentFloor en
+        // CB2_InitSima: si el modo se remonta en la misma sesión de ROM
+        // (PHANTOM_DEBUG_SIMA), un cadáver de la sesión anterior no debe
+        // seguir "muriendo" en la nueva.
+        sEnemyDeathTimer[i] = 0;
     }
 
     sEnemyAnimTimer = 0;
@@ -569,6 +828,15 @@ void SimaActors_UpdateEnemies(void)
 {
     u8 i;
     bool8 moveNow;
+    // Golpe del jugador (Tarea 7): se calcula UNA vez por frame, no por
+    // enemigo -- AttackHitboxActive/SimaActors_WeaponHitbox no dependen de
+    // qué enemigo se esté mirando, así que repetir la cuenta 3 veces sería
+    // trabajo idéntico tirado.
+    bool8 attackHit = AttackHitboxActive();
+    s16 hitX = 0, hitY = 0;
+
+    if (attackHit)
+        SimaActors_WeaponHitbox(sAttackFacing, sPlayerX, sPlayerY, &hitX, &hitY);
 
     if (sPlayerInvulnTimer > 0)
         sPlayerInvulnTimer--;
@@ -589,8 +857,38 @@ void SimaActors_UpdateEnemies(void)
     {
         struct Sprite *sprite;
 
-        if (!sEnemyAlive[i])
+        // Cadáver en curso (Tarea 7): no se mueve, no daña por contacto, solo
+        // anima la muerte y cuenta atrás hasta que toca destruir el sprite.
+        // Va ANTES del guard de sEnemyAlive porque un enemigo muriendo ya
+        // tiene sEnemyAlive en FALSE (ver más abajo) pero su sprite sigue
+        // vivo unos frames más.
+        if (sEnemyDeathTimer[i] > 0)
+        {
+            sEnemyDeathTimer[i]--;
+            sprite = &gSprites[sEnemySpriteId[i]];
+            sprite->oam.tileNum = sprite->sheetTileStart +
+                (((sEnemyDeathTimer[i] / SIMA_ENEMY_DEATH_ANIM_PERIOD) & 1)
+                     ? ENEMY_FRAME_DEATH_A : ENEMY_FRAME_DEATH_B);
+            if (sEnemyDeathTimer[i] == 0)
+                DestroySprite(sprite);
             continue;
+        }
+
+        if (!sEnemyAlive[i])
+            continue;  // ya destruido del todo (o nunca llegó a existir, ver SimaActors_InitEnemies)
+
+        // Golpe del arma: un enemigo tocado muere de un golpe (ver el
+        // comentario junto a SIMA_ENEMY_DEATH_FRAMES sobre por qué un solo
+        // golpe y no una barra de vida). sEnemyAlive baja a FALSE AQUÍ
+        // MISMO -- no cuando termina la animación -- para que
+        // SimaActors_StairsUnlocked/GetAliveEnemyCount reaccionen en el
+        // frame exacto del golpe, igual que ya hacían antes de esta tarea.
+        if (attackHit && BoxesOverlap(hitX, hitY, sEnemyX[i], sEnemyY[i]))
+        {
+            sEnemyAlive[i] = FALSE;
+            sEnemyDeathTimer[i] = SIMA_ENEMY_DEATH_FRAMES;
+            continue;  // sin movimiento ni daño de contacto en el frame en que muere
+        }
 
         if (moveNow)
             MoveEnemyToward(i, sPlayerX, sPlayerY);

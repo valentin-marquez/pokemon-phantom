@@ -325,6 +325,32 @@ static void Test_SimaStairsUnlocked(void)
     PHANTOM_ASSERT(SimaRoom_GetEnemyCount(0) == 3, "sima-floor0-three-enemies");
 }
 
+// Test 12 (Tarea 7): la caja de golpe del arma (SimaActors_WeaponHitbox,
+// src/sima_actors.c) es pura -- sin sprites ni input, igual que
+// SimaActors_BoxFits/ApplyDamage -- asi que el harness in-ROM la puede
+// verificar sin poder pulsar A. Un jugador con su caja en (100, 50) [esquina
+// superior izquierda, misma convencion que SimaActors_BoxFits] debe golpear
+// la casilla ADYACENTE en cada una de las 4 direcciones (salto de 16px en el
+// eje de esa direccion, nunca la propia casilla del jugador): eso es lo que
+// hace que un golpe no pueda autolesionar y solo alcance a un enemigo que
+// este de verdad delante.
+static void Test_SimaWeaponHitbox(void)
+{
+    s16 x, y;
+
+    SimaActors_WeaponHitbox(SIMA_FACING_DOWN, 100, 50, &x, &y);
+    PHANTOM_ASSERT(x == 100 && y == 66, "sima-weapon-hitbox-down");
+
+    SimaActors_WeaponHitbox(SIMA_FACING_UP, 100, 50, &x, &y);
+    PHANTOM_ASSERT(x == 100 && y == 34, "sima-weapon-hitbox-up");
+
+    SimaActors_WeaponHitbox(SIMA_FACING_LEFT, 100, 50, &x, &y);
+    PHANTOM_ASSERT(x == 84 && y == 50, "sima-weapon-hitbox-left");
+
+    SimaActors_WeaponHitbox(SIMA_FACING_RIGHT, 100, 50, &x, &y);
+    PHANTOM_ASSERT(x == 116 && y == 50, "sima-weapon-hitbox-right");
+}
+
 void PhantomTest_Run(void)
 {
     PHANTOM_CHECKPOINT("suite-start");
@@ -344,6 +370,7 @@ void PhantomTest_Run(void)
     Test_SimaFloorProgression();
     Test_SimaDamage();
     Test_SimaStairsUnlocked();
+    Test_SimaWeaponHitbox();
     PHANTOM_CHECKPOINT("suite-end");
     PhantomTest_Finish(gPhantomTestFailed);
 }

@@ -204,6 +204,52 @@ def generate_hud_hearts():
     print(f"hud_hearts.png  ({out.width}x{out.height})")
 
 
+# Arma del jugador (Tarea 7): dos frames de un mismo mandoble recortados de
+# weapons.png (hoja de 33x48 celdas de 16x16 con decenas de armas y
+# direcciones -- no hay una unica celda "arma mirando arriba/abajo/izq/der"
+# limpia en esa hoja; la mayoria de sus iconos son diagonales pensados para
+# rotarse con motor propio, no para un juego de 4 direcciones como SIMA). Se
+# eligieron estos dos por inspeccion visual (ver informe de la Tarea 7):
+# ambos son la MISMA espada en la misma orientacion diagonal (mango arriba-
+# izquierda, punta abajo-derecha) -- FRAME_A es el mandoble "en el aire",
+# FRAME_B es el mismo golpe con un destello de impacto (las motas sueltas
+# alrededor de la hoja). En juego se muestran en secuencia (A al iniciar el
+# golpe, B durante el impacto) y se orientan por direccion con flips de OAM
+# (ST_OAM_HFLIP/VFLIP en src/sima_actors.c), no con arte nuevo por direccion:
+# la diagonal ya sirve para abajo/derecha tal cual, y para arriba/izquierda
+# volteada, sin que haga falta recortar mas celdas de la hoja.
+#
+# Recortes en PIXELES, no en celdas de 16x16 (a diferencia de TILE_CELLS/
+# PLAYER_WALK_CELLS/HUD_HEART_CELLS de mas arriba): el pivote de cada arma en
+# esta hoja no esta centrado en su celda, asi que un recorte alineado a la
+# rejilla cortaria la hoja o el mango. Las cajas de abajo son el bounding box
+# real de cada icono (medido por script, sin pixeles rojos de sobra) mas un
+# margen de 1-5px para que no quede pegado al borde -- no tocar sin remedir
+# con el mismo metodo (buscar el rectangulo no-transparente de esa zona de
+# weapons.png).
+WEAPON_FRAME_BOXES = [
+    (2, 9, 18, 25),    # FRAME_A: mandoble liso, celdas (0,0)-(1,1) de weapons.png
+    (50, 3, 66, 19),   # FRAME_B: mismo golpe + destello, celdas (3,0)-(4,1)
+]
+
+
+def generate_weapon():
+    """Recorta los dos frames de WEAPON_FRAME_BOXES de weapons.png (ya
+    reindexado) y los empaqueta en una tira horizontal de 32x16, igual que
+    generate_player_walk(): graphics_file_rules.mk la convierte con -mwidth 2
+    -mheight 2 para que cada celda de 16x16 quede en 4 tiles de hardware
+    contiguos (formato OBJ)."""
+    src_path = os.path.join(OUT, "weapons.png")
+    src = Image.open(src_path)
+    out = Image.new("P", (16 * len(WEAPON_FRAME_BOXES), 16), 0)
+    out.putpalette(src.getpalette())
+    for i, box in enumerate(WEAPON_FRAME_BOXES):
+        cell = src.crop(box)
+        out.paste(cell, (i * 16, 0))
+    out.save(os.path.join(OUT, "weapon.png"))
+    print(f"weapon.png  ({out.width}x{out.height})")
+
+
 def main():
     root = sys.argv[1] if len(sys.argv) > 1 else SRC_DEFAULT
     missing = [p for p in ASSETS if not os.path.exists(os.path.join(root, p))]
@@ -214,6 +260,7 @@ def main():
     generate_tiles()
     generate_player_walk()
     generate_hud_hearts()
+    generate_weapon()
 
 
 if __name__ == "__main__":

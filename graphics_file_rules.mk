@@ -323,6 +323,12 @@ graphics/sima/bat.4bpp: %.4bpp: %.png
 graphics/sima/slime.4bpp: %.4bpp: %.png
 	$(GFX) $< $@ -mwidth 2 -mheight 2
 
+# weapon.png (Tarea 7): dos frames de 16x16 del mandoble del jugador
+# recortados de weapons.png (graphics/sima/gen.py, generate_weapon), mismo
+# formato OBJ que player_walk.4bpp/rat.4bpp de arriba.
+graphics/sima/weapon.4bpp: %.4bpp: %.png
+	$(GFX) $< $@ -mwidth 2 -mheight 2
+
 
 ### Miscellaneous ###
 

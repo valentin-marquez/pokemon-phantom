@@ -8,6 +8,20 @@ void CB2_InitSima(void);
 // Vida del jugador (Tarea 6): 3 corazones, vease DrawHud en src/sima.c.
 #define SIMA_PLAYER_MAX_HP 3
 
+// Direccion a la que mira el jugador (y, desde la Tarea 7, tambien la
+// direccion en la que se orienta su ataque). Vivia como enum privado dentro
+// de src/sima_actors.c hasta la Tarea 7; se sube aqui porque
+// SimaActors_WeaponHitbox (mas abajo) necesita que el harness in-ROM
+// (src/phantom_test.c) pueda pasarle un facing sin depender de un simbolo
+// interno del .c.
+enum SimaFacing
+{
+    SIMA_FACING_DOWN,
+    SIMA_FACING_UP,
+    SIMA_FACING_LEFT,
+    SIMA_FACING_RIGHT,
+};
+
 // Jugador de SIMA (Tarea 4, src/sima_actors.c): sprite de 16x16 movido en
 // pixeles con colision por casilla contra SimaRoom_IsSolid.
 void SimaActors_InitPlayer(u8 floor);
@@ -54,5 +68,15 @@ u8 SimaActors_GetAliveEnemyCount(void);
 // (hoy: "aparece de golpe" al morir el ultimo, no "visible pero apagada" --
 // ver el comentario junto a la implementacion en src/sima_actors.c).
 bool8 SimaActors_StairsUnlocked(u8 aliveEnemyCount);
+
+// Ataque del jugador (Tarea 7). Funcion pura, sin sprites: la casilla de
+// 16x16 (misma convencion de esquina superior izquierda que
+// SimaActors_BoxFits) que el arma amenaza cuando el jugador -- con su caja
+// en (playerX, playerY) -- ataca mirando `facing`. Es siempre la casilla
+// ADYACENTE en esa direccion, nunca la propia del jugador: por eso un golpe
+// no puede autolesionar y solo alcanza a un enemigo que este de verdad
+// delante, no a uno que solo comparta casilla por detras o al lado. Expuesta
+// para el harness in-ROM, igual que SimaActors_BoxFits/ApplyDamage.
+void SimaActors_WeaponHitbox(u8 facing, s16 playerX, s16 playerY, s16 *outX, s16 *outY);
 
 #endif // GUARD_SIMA_H
