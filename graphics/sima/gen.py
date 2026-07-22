@@ -84,18 +84,41 @@ def convert(src_path, out_name):
 # el campo de 10 bits (1024) de una entrada de tilemap. Coordenadas en celdas
 # de 16x16, elegidas por uniformidad/contraste -- no tocar sin remedir.
 # indice 0 = suelo, 1 = muro, 2 = escalera (ver include/sima_rooms.h).
+#
+# El 4o campo (over_floor) marca las celdas que tienen pixeles con indice 0
+# (transparente) y por eso deben componerse sobre el suelo antes de escribirse
+# en tiles.png. Motivo: indice 0 es transparente de verdad en un OBJ (sprite),
+# pero estas tres celdas se pintan en un BG (fondo de tilemap), y ahi el
+# indice 0 no es "hueco": el hardware le pinta el color de backdrop, que es
+# justo la paleta[0] = TRANSPARENT = rojo (255,0,0). El suelo y el muro son
+# opacos al 100% (medido), asi que nunca enseñan ese rojo; la escalera si
+# tiene huecos (el hueco entre peldaños) y por eso salia con un recuadro rojo
+# alrededor. Si mañana se añade otra celda de BG con transparencia, marcarla
+# aqui con True en vez de reintroducir el mismo bug.
 TILE_CELLS = [
-    ("grounds", 12, 12),  # crema (212,210,155) al 97%, con motas
-    ("walls", 5, 1),      # marron oscuro (88,68,34) con vetas verdes
-    ("props", 3, 0),      # escalera de mano
+    ("grounds", 12, 12, False),  # crema (212,210,155) al 97%, con motas
+    ("walls", 5, 1, False),      # marron oscuro (88,68,34) con vetas verdes
+    ("props", 3, 0, True),       # escalera de mano -- tiene huecos transparentes
 ]
+
+# Indice de TILE_CELLS que hace de fondo al componer las celdas over_floor.
+# Es el mismo suelo que ya pinta PlaceCell debajo de cualquier prop en el
+# tilemap de la sala, asi que componer contra el es fiel a como se ve en juego.
+FLOOR_CELL_INDEX = 0
 
 
 def generate_tiles():
     """Recorta TILE_CELLS de las hojas ya convertidas en OUT y las pega en
     fila en tiles.png (48x16): 3 celdas de 16x16, una por indice de
     SimaTile. Las hojas fuente comparten paleta (verificado en la Tarea 1),
-    asi que el recorte es una simple copia de indices, sin recuantizar."""
+    asi que el recorte es una simple copia de indices, sin recuantizar.
+
+    Las celdas marcadas over_floor en TILE_CELLS se componen sobre la celda
+    de suelo (FLOOR_CELL_INDEX): donde tengan indice 0 (transparente) se usa
+    el pixel de suelo en su lugar, para que el indice 0 no llegue nunca a
+    tiles.png fuera de la celda de suelo/muro. Ver el comentario en
+    TILE_CELLS para el porque (indice 0 = backdrop visible en un BG, no
+    transparencia real como en un OBJ)."""
     out = Image.new("P", (16 * len(TILE_CELLS), 16), 0)
     pal = list(TRANSPARENT)
     for rgb in COLORS:
@@ -103,10 +126,25 @@ def generate_tiles():
     pal += [0, 0, 0] * (16 - 1 - len(COLORS))
     out.putpalette(pal)
 
-    for i, (sheet, cellX, cellY) in enumerate(TILE_CELLS):
+    cells = []
+    for sheet, cellX, cellY, over_floor in TILE_CELLS:
         sheet_path = os.path.join(OUT, sheet + ".png")
         src = Image.open(sheet_path)
         cell = src.crop((cellX * 16, cellY * 16, cellX * 16 + 16, cellY * 16 + 16))
+        cells.append(cell)
+
+    floor = cells[FLOOR_CELL_INDEX]
+    floor_px = floor.load()
+
+    for i, (_, _, _, over_floor) in enumerate(TILE_CELLS):
+        cell = cells[i]
+        if over_floor:
+            cell = cell.copy()
+            px = cell.load()
+            for y in range(16):
+                for x in range(16):
+                    if px[x, y] == 0:
+                        px[x, y] = floor_px[x, y]
         out.paste(cell, (i * 16, 0))
 
     out.save(os.path.join(OUT, "tiles.png"))
