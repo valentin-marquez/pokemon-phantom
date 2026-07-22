@@ -202,80 +202,97 @@ static void Test_SimaRoomsValid(void)
     PHANTOM_ASSERT(SimaRoom_IsSolid(0, 5, SIMA_ROOM_H), "sima-oob-solid-bottom");
 }
 
-// Test 8 (Task 4): la caja de colision del jugador (SimaActors_BoxFits,
-// src/sima_actors.c) es una funcion pura -- sin sprite ni input de por
-// medio, se puede probar aqui igual que Test_SimaRoomsValid prueba
-// SimaRoom_IsSolid. Cabe en la casilla de spawn de cada piso (que
-// Test_SimaRoomsValid ya certifico transitable), no cabe en la esquina
-// superior izquierda de la sala (solida en todos los pisos reales, aunque el
-// borde ya no sea un anillo cerrado -- ver el arco de entrada del piso 1) ni
-// muy fuera de sus limites.
-static void Test_SimaPlayerBoxFits(void)
+// Test 8 (turnos): SimaActors_PlayerStepTarget (src/sima_actors.c) es la
+// funcion pura que decide si un paso de rejilla es valido -- sustituye a
+// SimaActors_BoxFits (eliminada con el cambio a movimiento por turnos: con
+// una casilla, no una caja de 12x12, la colision es solo SimaRoom_IsSolid
+// sobre el destino). ELIMINADOS de este archivo con esa funcion: los 5
+// PHANTOM_ASSERT de Test_SimaPlayerBoxFits (sima-player-box-fits-spawn,
+// sima-player-box-blocked-by-wall, sima-player-box-blocked-oob,
+// sima-box-clear-1px, sima-box-blocked-1px) -- no solo los dos ultimos (los
+// pensados para el off-by-one de la caja de 12x12): la funcion que probaban
+// ya no existe, asi que ninguno de los 5 podia seguir compilando. Lo que
+// verificaban sigue cubierto: "spawn transitable"/"fuera de rango es solido"
+// ya los prueba Test_SimaRoomsValid (sima-spawns-walkable,
+// sima-oob-solid-*); "un muro bloquea" y el caso de margen de 1px los prueban
+// los casos de abajo, ahora en casillas en vez de en pixeles de una caja.
+//
+// Casillas reales del piso 0 (tools/sima-editor/salas.json, ver
+// src/sima_rooms_data.h/sRoomSolid): fila y=2, columnas 1-4 suelo, columna 5
+// muro (separacion exacta, sin caja de por medio -- no hace falta un "margen
+// de 1px" artificial: la casilla vecina YA es la prueba de margen).
+static void Test_SimaPlayerStepTarget(void)
 {
-    u8 floor;
-    bool8 allSpawnsFit = TRUE;
-    bool8 allWallsBlock = TRUE;
+    s8 x, y;
 
-    for (floor = 0; floor < SIMA_FLOOR_COUNT; floor++)
-    {
-        s8 sx, sy;
-        SimaRoom_GetSpawn(floor, &sx, &sy);
-        if (!SimaActors_BoxFits(floor, (s16)sx * 16, (s16)sy * 16))
-            allSpawnsFit = FALSE;
+    // Paso normal: spawn (1,0) mirando abajo cae en suelo (1,1).
+    PHANTOM_ASSERT(SimaActors_PlayerStepTarget(0, 1, 0, SIMA_FACING_DOWN, &x, &y)
+                       && x == 1 && y == 1,
+                   "sima-step-player-open");
 
-        // (0,0) cae en el anillo de muros en las tres salas: la caja del
-        // jugador no puede caber ahi.
-        if (SimaActors_BoxFits(floor, 0, 0))
-            allWallsBlock = FALSE;
-    }
+    // Bloqueado por el borde de la sala (fuera de rango, SimaRoom_IsSolid
+    // devuelve solido): desde el spawn mirando arriba no hay paso, y la
+    // casilla de salida NO cambia (se queda en el spawn).
+    PHANTOM_ASSERT(!SimaActors_PlayerStepTarget(0, 1, 0, SIMA_FACING_UP, &x, &y)
+                       && x == 1 && y == 0,
+                   "sima-step-player-blocked-oob");
 
-    PHANTOM_ASSERT(allSpawnsFit, "sima-player-box-fits-spawn");
-    PHANTOM_ASSERT(allWallsBlock, "sima-player-box-blocked-by-wall");
-    // Muy fuera de la sala: SimaRoom_IsSolid ya devuelve TRUE fuera de rango
-    // (ver sima-oob-solid-* arriba), asi que la caja tampoco deberia caber.
-    PHANTOM_ASSERT(!SimaActors_BoxFits(0, -100, -100), "sima-player-box-blocked-oob");
+    // Bloqueado por un muro real (no de borde): (4,2) mirando a la derecha
+    // pega contra (5,2), muro. Tampoco cambia de casilla.
+    PHANTOM_ASSERT(!SimaActors_PlayerStepTarget(0, 4, 2, SIMA_FACING_RIGHT, &x, &y)
+                       && x == 4 && y == 2,
+                   "sima-step-player-blocked-wall");
 
-    // Casos de margen (revision de codigo, Tarea 4): los tres casos de arriba
-    // caen todos dentro de una sola celda de la rejilla en las cuatro
-    // esquinas de la caja, asi que no detectarian un off-by-one en la
-    // aritmetica de SimaActors_BoxFits (p.ej. "right = left + COLLISION_W"
-    // olvidando el "-1" -- right pasaria de 29 a 30 y ambos numeros siguen
-    // cayendo en la misma celda [16,31], el test seguiria en verde).
-    //
-    // Se usa el piso 0 real (tools/sima-editor/salas.json), fila y=1: las
-    // columnas 1-10 son suelo y la columna 11 es muro (comprobado contra
-    // src/sima_rooms_data.h, sRoomSolid). Se elige el borde DERECHO de ese
-    // tramo (columna 11) en vez del izquierdo porque es ahi donde se calcula
-    // "right" -- la variable que el bug hipotetico de arriba corrompe; el
-    // margen izquierdo usa "left", que no tiene ese "-1" y no lo detectaria.
-    //
-    // Constantes relevantes (src/sima_actors.c): COLLISION_W = 12,
-    // COLLISION_MARGIN_X = (16 - 12) / 2 = 2. Con "x" la esquina superior
-    // izquierda del sprite (parametro de SimaActors_BoxFits):
-    //   left  = x + 2
-    //   right = left + COLLISION_W - 1 = left + 11
-    //
-    // Se fija y = 16 (fila 1 completa, pixeles 16-31) para que arriba/abajo
-    // de la caja nunca toquen una fila distinta y solo el eje X este en
-    // juego:
-    //   top    = y + 2  = 18  -> fila 18/16 = 1
-    //   bottom = top + 11 = 29 -> fila 29/16 = 1 (misma fila que top)
-    //
-    // Muro (columna 11) empieza en el pixel 11*16 = 176. Suelo (columna 10)
-    // termina en el pixel 10*16+15 = 175.
-    //
-    // Caso "libra por 1px" (x = 162): left = 164, right = 164+11 = 175.
-    // right/16 = 10 -> suelo en las cuatro esquinas -> debe caber (TRUE).
-    // Con el bug hipotetico (right = left+12 = 176), right/16 pasaria a 11
-    // (muro) y este caso fallaria en falso -- exactamente el off-by-one que
-    // el caso de abajo, solo, no distingue.
-    PHANTOM_ASSERT(SimaActors_BoxFits(0, 162, 16), "sima-box-clear-1px");
+    // La casilla vecina en la direccion contraria SI es transitable: prueba
+    // de margen sin caja -- confirma que el bloqueo de arriba es del muro
+    // real (columna 5), no de un desplazamiento por error en otro eje.
+    PHANTOM_ASSERT(SimaActors_PlayerStepTarget(0, 4, 2, SIMA_FACING_LEFT, &x, &y)
+                       && x == 3 && y == 2,
+                   "sima-step-player-clear-neighbor");
+}
 
-    // Caso "solapa por 1px" (x = 163, un pixel mas cerca del muro): left =
-    // 165, right = 165+11 = 176. right/16 = 11 (muro, columna 11) -> la
-    // esquina superior derecha de la caja cae sobre el muro -> no debe caber
-    // (FALSE).
-    PHANTOM_ASSERT(!SimaActors_BoxFits(0, 163, 16), "sima-box-blocked-1px");
+// Test 9 (turnos): SimaActors_EnemyStepTarget (src/sima_actors.c) es la
+// funcion pura que decide el paso de un enemigo hacia el jugador -- elige el
+// eje que mas lo acerca, prueba el otro si el primero esta bloqueado, y se
+// queda quieto si los dos lo estan. Los cuatro casos usan casillas reales
+// del piso 0 (src/sima_rooms_data.h/sRoomSolid), verificadas a mano contra
+// esa tabla:
+//   fila y=6: (3,6) y (11,6) son las casillas reales de dos enemigos (ver
+//     tools/sima-editor/salas.json) -- sin muros entre medias en esa fila.
+//   fila y=2, columna 5-9: muro: (6,2) y (8,2) son muro.
+//   fila y=3, columnas 5 y 9: muro; columnas 6-8: suelo.
+//   fila y=1, columnas 1-10: suelo (pasillo superior, sin muros).
+static void Test_SimaEnemyStepTarget(void)
+{
+    s8 x, y;
+
+    // Eje X domina (mismo y=6) y esta libre: se mueve una casilla hacia el
+    // jugador por X. Mismas casillas que los enemigos reales del piso 1.
+    SimaActors_EnemyStepTarget(0, 3, 6, 11, 6, &x, &y);
+    PHANTOM_ASSERT(x == 4 && y == 6, "sima-step-enemy-primary-axis");
+
+    // Eje X domina (adx=3 > ady=1) pero (5,3) es muro: cae al eje Y,
+    // (4,4) esta libre.
+    SimaActors_EnemyStepTarget(0, 4, 3, 7, 4, &x, &y);
+    PHANTOM_ASSERT(x == 4 && y == 4, "sima-step-enemy-fallback-axis");
+
+    // Empate (adx=ady=2): primero intenta Y (arriba, prioridad vertical),
+    // (6,2) es muro -> cae a X, (7,3) esta libre.
+    SimaActors_EnemyStepTarget(0, 6, 3, 8, 1, &x, &y);
+    PHANTOM_ASSERT(x == 7 && y == 3, "sima-step-enemy-tie-fallback");
+
+    // Ambos ejes bloqueados: (8,2) y (9,3) son muro -> se queda quieto
+    // (misma casilla de entrada). Esto es "una casilla bloqueada no
+    // consume turno" para un enemigo: StartEnemyTurn (src/sima_actors.c)
+    // ve nx==ex && ny==ey y no arranca ningun deslizamiento para el.
+    SimaActors_EnemyStepTarget(0, 8, 3, 9, 1, &x, &y);
+    PHANTOM_ASSERT(x == 8 && y == 3, "sima-step-enemy-both-blocked");
+
+    // Adyacente: el "paso" aterriza exactamente en la casilla del jugador
+    // -- la misma regla cubre "llega a la casilla" y "ya adyacente avanza
+    // contra el" (ver el comentario de SimaActors_EnemyStepTarget).
+    SimaActors_EnemyStepTarget(0, 5, 1, 6, 1, &x, &y);
+    PHANTOM_ASSERT(x == 6 && y == 1, "sima-step-enemy-reaches-player");
 }
 
 // Test 9 (Task 5): la progresion de pisos satura en el ultimo. Si desbordara,
@@ -366,7 +383,8 @@ void PhantomTest_Run(void)
     Test_PhantomAdvanceDay();
     Test_PhantomExecutionSeen();
     Test_SimaRoomsValid();
-    Test_SimaPlayerBoxFits();
+    Test_SimaPlayerStepTarget();
+    Test_SimaEnemyStepTarget();
     Test_SimaFloorProgression();
     Test_SimaDamage();
     Test_SimaStairsUnlocked();

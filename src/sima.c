@@ -170,6 +170,13 @@ static void CheckStairs(void)
 {
     s8 x, y;
 
+    // Turnos (cambio de genero): solo comprobar la escalera con el jugador
+    // YA ASENTADO en su casilla (SimaActors_IsPlayerIdle), nunca a mitad de
+    // un deslizamiento -- si no, el centro del sprite podria "adelantarse" a
+    // la casilla de llegada antes de que el turno termine de verdad.
+    if (!SimaActors_IsPlayerIdle())
+        return;
+
     SimaActors_GetPlayerTile(&x, &y);
     // Tarea 6: pisar la escalera solo hace algo si ya está abierta (todos
     // los enemigos del piso muertos). SimaRoom_IsStairs por sí sola ya no
