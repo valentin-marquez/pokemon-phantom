@@ -378,6 +378,31 @@ static void UpdateGlitchEffect(void)
     }
 }
 
+// Ver title_screen.h. Corta un glitch a medias devolviendo el tilemap del logo
+// a su estado guardado. Idempotente: sin glitch activo no toca nada (y NO puede
+// restaurar a ciegas, porque savedSegments solo es válido mientras .active).
+void TitleScreen_CancelGlitch(void)
+{
+    int i;
+    int j;
+
+    if (!sGlitchEffect.active)
+        return;
+
+    for (i = 0; i < GLITCH_SEGMENTS; i++)
+    {
+        for (j = 0; j < 32; j++)
+        {
+            ((u16 *)BG_SCREEN_ADDR(31))[i * 32 + j] = sGlitchEffect.savedSegments[i][j];
+        }
+    }
+
+    sGlitchEffect.active = FALSE;
+    sGlitchEffect.duration = 0;
+    for (i = 0; i < GLITCH_SEGMENTS; i++)
+        sGlitchEffect.offsets[i] = 0;
+}
+
 static void UpdateCloudPosition(void)
 {
     sCloudScrollDelay++;
@@ -542,13 +567,25 @@ static void Task_TitleScreenMain(u8 taskId)
     UpdateCloudPosition();
     SetMainTitleScreen();
 
-    // Trigger glitch periodically
-    if (gMain.vblankCounter1 % GLITCH_INTERVAL == 0)
+    // Trigger glitch periodically.
+    // Gateado con !PhantomIntro_IsBusy() igual que el input de abajo: el glitch
+    // desplaza bandas del tilemap del logo hasta ±GLITCH_MAX_OFFSET *tiles*
+    // (±24 px), y si sigue corriendo durante el vidrio se suma a la sacudida y
+    // el logo se ve desgarrado al azar. Como se dispara con
+    // vblankCounter1 % GLITCH_INTERVAL, caía en un momento arbitrario respecto
+    // a cuándo se pulsa START: a veces pillaba la secuencia y a veces no.
+    // PhantomGlass_Start() llama a TitleScreen_CancelGlitch() para que un
+    // glitch ya en marcha no se quede congelado a medias al dejar de
+    // actualizarlo aquí.
+    if (!PhantomIntro_IsBusy())
     {
-        TriggerGlitchEffect();
-    }
+        if (gMain.vblankCounter1 % GLITCH_INTERVAL == 0)
+        {
+            TriggerGlitchEffect();
+        }
 
-    UpdateGlitchEffect();
+        UpdateGlitchEffect();
+    }
 
     // Keep this task running every frame so clouds/glitch animate continuously.
     // Handle input to start the game here instead of destroying the task.
@@ -589,9 +626,11 @@ static void SetMainTitleScreen(void)
     ShowBg(1); // Clouds (scrolling)
     ShowBg(0); // Logo (front)
 
-    // Position logo if needed
-    ChangeBgX(0, -4 * 256, BG_COORD_SET);
-    ChangeBgY(0, -46 * 256, BG_COORD_SET);
+    // Position logo if needed. OJO: esto corre CADA frame con BG_COORD_SET, así
+    // que reasigna BG0HOFS/VOFS incondicionalmente -- ver TITLE_LOGO_BG_X/Y en
+    // title_screen.h para por qué los efectos externos deben sumarse a esta base.
+    ChangeBgX(0, TITLE_LOGO_BG_X * 256, BG_COORD_SET);
+    ChangeBgY(0, TITLE_LOGO_BG_Y * 256, BG_COORD_SET);
 
     // Set up blending for clouds and logo
     SetGpuReg(REG_OFFSET_BLDCNT, BLDCNT_TGT1_BG1 | BLDCNT_TGT2_BG0);
