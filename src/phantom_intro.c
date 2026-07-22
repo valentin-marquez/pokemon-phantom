@@ -85,6 +85,10 @@ static void PhantomGlass_Start(MainCallback nextCB)
     // idempotente si ya estaba oculto (TitleScreen_SetPressStartVisible solo
     // reescribe .invisible en los sprites existentes).
     TitleScreen_SetPressStartVisible(FALSE);
+    // Task_TitleScreenMain deja de actualizar el glitch mientras IsBusy(); si
+    // había uno a medias, su desgarro del tilemap del logo se quedaría
+    // congelado en pantalla toda la secuencia. Restaurarlo aquí.
+    TitleScreen_CancelGlitch();
     sGlassNextCB = nextCB;
     sGlassPhase = 0;
     sGlassTimer = 0;
@@ -101,9 +105,22 @@ static void PhantomGlass_Start(MainCallback nextCB)
     CreateTask(Task_PhantomGlass, 5);
 }
 
+// Presupuesto de la secuencia (a 59,73 Hz):
+//   impacto   4 fr (flash)  + sacudida 14 fr + aguante 110 fr + fundido 64 fr
+//   = 192 fr ~ 3,2 s. El flash y la sacudida se dejan cortos a propósito (el
+//   golpe tiene que ser seco); el tiempo se gasta en el aguante, que es donde
+//   se leen las grietas, y en un fundido lento que da profundidad al cierre.
 #define GLASS_SHAKE_FRAMES 14
-#define GLASS_HOLD_FRAMES  20
+#define GLASS_HOLD_FRAMES  110
 #define GLASS_SHAKE_MAX    3   // px
+// delay de BeginNormalPaletteFade: frames de espera ENTRE pasos, no total.
+// Cuidado con la aritmética (ver UpdateNormalPaletteFade en src/palette.c):
+//   - gPaletteFade.deltaY = 2, así que 0->16 son 8 pasos, NO 16.
+//   - cada paso gasta (delay + 2) frames: `delay` frames esperando + 1 frame
+//     mezclando paletas BG + 1 frame mezclando OBJ (gPaletteFade.y solo avanza
+//     cuando objPaletteToggle vuelve a 0).
+// Total = 8 * (GLASS_FADE_DELAY + 2) = 64 fr ~ 1,07 s.
+#define GLASS_FADE_DELAY   6
 
 static void Task_PhantomGlass(u8 taskId)
 {
@@ -139,12 +156,23 @@ static void Task_PhantomGlass(u8 taskId)
         // en -3..+3 con capturas: solo BG3 lo produce, y en ambos signos).
         // El VOFS vertical de BG3 sí es seguro en todo el rango. BG0/BG2
         // toleran HOFS y VOFS en cualquier signo (probado, sin artefacto).
-        SetGpuReg(REG_OFFSET_BG0HOFS, dx);   SetGpuReg(REG_OFFSET_BG0VOFS, dy);
+        // BG0 (el logo) NO parte de 0: SetMainTitleScreen() lo reasigna a
+        // (TITLE_LOGO_BG_X, TITLE_LOGO_BG_Y) con BG_COORD_SET cada frame, y
+        // esta task corre después (prioridad 5 > 4). Escribir aquí el jitter
+        // crudo pisaba esa base y hacía que el logo saltara 46 px hacia abajo
+        // durante toda la sacudida -- hay que SUMAR sobre la base, no asignar.
+        // BG2/BG3 sí tienen base 0 (nadie los reposiciona), así que van crudos.
+        SetGpuReg(REG_OFFSET_BG0HOFS, TITLE_LOGO_BG_X + dx);
+        SetGpuReg(REG_OFFSET_BG0VOFS, TITLE_LOGO_BG_Y + dy);
         SetGpuReg(REG_OFFSET_BG2HOFS, dx);   SetGpuReg(REG_OFFSET_BG2VOFS, dy);
         SetGpuReg(REG_OFFSET_BG3HOFS, 0);    SetGpuReg(REG_OFFSET_BG3VOFS, dy);
         if (sGlassTimer >= GLASS_SHAKE_FRAMES)
         {
-            SetGpuReg(REG_OFFSET_BG0HOFS, 0); SetGpuReg(REG_OFFSET_BG0VOFS, 0);
+            // Devolver BG0 a su base (no a 0) para que el frame de cierre de la
+            // sacudida no meta un parpadeo del logo antes de que
+            // SetMainTitleScreen() lo recoloque en el frame siguiente.
+            SetGpuReg(REG_OFFSET_BG0HOFS, TITLE_LOGO_BG_X);
+            SetGpuReg(REG_OFFSET_BG0VOFS, TITLE_LOGO_BG_Y);
             SetGpuReg(REG_OFFSET_BG2HOFS, 0); SetGpuReg(REG_OFFSET_BG2VOFS, 0);
             SetGpuReg(REG_OFFSET_BG3HOFS, 0); SetGpuReg(REG_OFFSET_BG3VOFS, 0);
             {
@@ -168,7 +196,7 @@ static void Task_PhantomGlass(u8 taskId)
     case 2: // aguanta: grietas visibles en el centro del vidrio
         if (sGlassTimer >= GLASS_HOLD_FRAMES)
         {
-            BeginNormalPaletteFade(PALETTES_ALL, 0, 0, 16, RGB_BLACK);
+            BeginNormalPaletteFade(PALETTES_ALL, GLASS_FADE_DELAY, 0, 16, RGB_BLACK);
             sGlassPhase = 3;
             sGlassTimer = 0;
         }
@@ -235,11 +263,28 @@ static const u16 sMenuPal[] = INCBIN_U16("graphics/phantom_intro/menu.gbapal");
 // "CONTINUAR" va en la fila siguiente, separada por 8px de la línea de
 // arriba, y termina muy por encima del final de pantalla (margen amplio abajo
 // a propósito: el pedido es "pegado al logo", no "llenar la pantalla").
-#define MENU_LABEL0_X   108   // centro del bloque "NUEVA" (fila 0) y "CONTINUAR" (fila 1) -- misma X: alineados a la izquierda
-#define MENU_LABEL1_X   143   // centro del bloque "PARTIDA": pegado a la derecha de "NUEVA" en la misma línea
+// X: centrado bajo el LOGO, no bajo la pantalla. El logo no está centrado --
+// medido a píxel sobre docs/design/captures/final/01_title.png ocupa x=13..123,
+// o sea centro en x=68 mientras el centro de pantalla es x=120. Con los valores
+// viejos (108/143/64) la línea "NUEVA PARTIDA" caía en x=78..154: empezaba por
+// la mitad del logo y se salía 31 px por su derecha, leyéndose como un bloque
+// centrado en pantalla colgado de un logo que no lo está.
+//
+// Geometría para recalcular: cada etiqueta es un bloque de 64 px posicionado
+// por su CENTRO y con TEXT_MARGIN=2 dentro (ver gen.py), así que el texto
+// empieza en (centro - 30). La fuente avanza 6 px por carácter.
+//   "NUEVA"     5 chars -> texto en  30, avanza hasta  60   (centro 60)
+//   "PARTIDA"   7 chars -> texto en  66 (60 + 1 espacio)    (centro 96)
+//   "CONTINUAR" 9 chars -> texto en  30                     (centro 60)
+// La línea completa ocupa x=30..106, centrada en 68 = el centro real del logo.
+#define MENU_LABEL0_X    60   // centro del bloque "NUEVA" (fila 0) y "CONTINUAR" (fila 1) -- misma X: alineados a la izquierda
+#define MENU_LABEL1_X    96   // centro del bloque "PARTIDA": pegado a la derecha de "NUEVA" en la misma línea
 #define MENU_ROW0_Y     121   // centro de fila 0: "NUEVA PARTIDA", justo bajo el logo
 #define MENU_ROW1_Y     136   // centro de fila 1: "CONTINUAR"
-#define MENU_CURSOR_X    64   // a la izquierda de las etiquetas
+// El cursor es un sprite 8x8 posicionado por su centro con el glifo dibujado en
+// x=1 dentro del tile, así que aparece en pantalla en (centro - 3): con 23 el
+// '>' cae en x=20, diez px a la izquierda del texto.
+#define MENU_CURSOR_X    23   // a la izquierda de las etiquetas
 #define MENU_CURSOR_Y0  110   // alineado con la línea "NUEVA PARTIDA"
 #define MENU_CURSOR_Y1  125   // alineado con "CONTINUAR"
 
