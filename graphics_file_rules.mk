@@ -298,6 +298,18 @@ $(FONTGFXDIR)/frlg_female.fwjpnfont: $(FONTGFXDIR)/japanese_frlg_female.png
 	$(GFX) $< $@
 
 
+### SIMA ###
+
+# player_walk.png (graphics/sima/gen.py) es una tira de celdas de 16x16 para
+# un OBJ (sprite del jugador, Tarea 4), no un BG: cada celda necesita sus 4
+# tiles de hardware contiguos, así que -mwidth/-mheight reordena el barrido
+# raster de gbagfx (mismo mecanismo que graphics/object_events/pics/*
+# en spritesheet_rules.mk para sus sprites de 16x32). tiles.4bpp (Tarea 3)
+# es BG y no necesita esto: PlaceCell en src/sima.c hace su propio barrido.
+graphics/sima/player_walk.4bpp: %.4bpp: %.png
+	$(GFX) $< $@ -mwidth 2 -mheight 2
+
+
 ### Miscellaneous ###
 
 $(TITLESCREENGFXDIR)/pokemon_logo.gbapal: %.gbapal: %.pal

@@ -14,6 +14,7 @@
 #include "start_menu.h"
 #include "wild_encounter.h"
 #include "sima_rooms.h"
+#include "sima.h"
 
 u8 gPhantomTestFailed = 0;
 
@@ -142,6 +143,39 @@ static void Test_SimaRoomsValid(void)
     PHANTOM_ASSERT(SimaRoom_IsSolid(0, 5, SIMA_ROOM_H), "sima-oob-solid-bottom");
 }
 
+// Test 8 (Task 4): la caja de colision del jugador (SimaActors_BoxFits,
+// src/sima_actors.c) es una funcion pura -- sin sprite ni input de por
+// medio, se puede probar aqui igual que Test_SimaRoomsValid prueba
+// SimaRoom_IsSolid. Cabe en la casilla de spawn de cada piso (que
+// Test_SimaRoomsValid ya certifico transitable), no cabe en la esquina
+// superior izquierda de la sala (dentro del anillo de muros en las tres) ni
+// muy fuera de sus limites.
+static void Test_SimaPlayerBoxFits(void)
+{
+    u8 floor;
+    bool8 allSpawnsFit = TRUE;
+    bool8 allWallsBlock = TRUE;
+
+    for (floor = 0; floor < SIMA_FLOOR_COUNT; floor++)
+    {
+        s8 sx, sy;
+        SimaRoom_GetSpawn(floor, &sx, &sy);
+        if (!SimaActors_BoxFits(floor, (s16)sx * 16, (s16)sy * 16))
+            allSpawnsFit = FALSE;
+
+        // (0,0) cae en el anillo de muros en las tres salas: la caja del
+        // jugador no puede caber ahi.
+        if (SimaActors_BoxFits(floor, 0, 0))
+            allWallsBlock = FALSE;
+    }
+
+    PHANTOM_ASSERT(allSpawnsFit, "sima-player-box-fits-spawn");
+    PHANTOM_ASSERT(allWallsBlock, "sima-player-box-blocked-by-wall");
+    // Muy fuera de la sala: SimaRoom_IsSolid ya devuelve TRUE fuera de rango
+    // (ver sima-oob-solid-* arriba), asi que la caja tampoco deberia caber.
+    PHANTOM_ASSERT(!SimaActors_BoxFits(0, -100, -100), "sima-player-box-blocked-oob");
+}
+
 void PhantomTest_Run(void)
 {
     PHANTOM_CHECKPOINT("suite-start");
@@ -157,6 +191,7 @@ void PhantomTest_Run(void)
     Test_PhantomAdvanceDay();
     Test_PhantomExecutionSeen();
     Test_SimaRoomsValid();
+    Test_SimaPlayerBoxFits();
     PHANTOM_CHECKPOINT("suite-end");
     PhantomTest_Finish(gPhantomTestFailed);
 }

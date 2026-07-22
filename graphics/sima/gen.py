@@ -113,6 +113,38 @@ def generate_tiles():
     print(f"tiles.png  ({out.width}x{out.height})")
 
 
+# Celdas de caminata que el jugador de la Tarea 4 usa de player.png (filas
+# 0/1/2: abajo, arriba, perfil -- ver el mapa de frames del brief de la
+# Tarea 4). Izquierda reutiliza las celdas de perfil volteadas por OAM
+# (oam.hFlip en src/sima_actors.c), no hace falta arte propio. (fila, col)
+# en celdas de 16x16 de player.png.
+PLAYER_WALK_CELLS = [
+    (0, 0), (0, 1), (0, 2),   # abajo:  quieto, paso A, paso B
+    (1, 0), (1, 1), (1, 2),   # arriba: quieto, paso A, paso B
+    (2, 0), (2, 1), (2, 2), (2, 3),  # perfil: quieto + 3 de ciclo de paso
+]
+
+
+def generate_player_walk():
+    """Recorta de player.png (ya reindexado) las 10 celdas de caminata que
+    usa SimaActors (Tarea 4) y las empaqueta en una tira horizontal de
+    160x16. A diferencia de generate_tiles() (que arma un BG, pintado por
+    PlaceCell con barrido raster de la hoja completa), esto es para un OBJ:
+    graphics_file_rules.mk convierte player_walk.png con -mwidth 2 -mheight 2
+    para que cada celda de 16x16 quede como 4 tiles de hardware CONTIGUOS,
+    que es el formato que necesita un sprite SPRITE_SIZE(16x16). Las filas
+    3-8 de player.png (ataque/muerte) quedan fuera: no son de esta tarea."""
+    src_path = os.path.join(OUT, "player.png")
+    src = Image.open(src_path)
+    out = Image.new("P", (16 * len(PLAYER_WALK_CELLS), 16), 0)
+    out.putpalette(src.getpalette())
+    for i, (row, col) in enumerate(PLAYER_WALK_CELLS):
+        cell = src.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
+        out.paste(cell, (i * 16, 0))
+    out.save(os.path.join(OUT, "player_walk.png"))
+    print(f"player_walk.png  ({out.width}x{out.height})")
+
+
 def main():
     root = sys.argv[1] if len(sys.argv) > 1 else SRC_DEFAULT
     missing = [p for p in ASSETS if not os.path.exists(os.path.join(root, p))]
@@ -121,6 +153,7 @@ def main():
     for rel, name in ASSETS.items():
         convert(os.path.join(root, rel), name)
     generate_tiles()
+    generate_player_walk()
 
 
 if __name__ == "__main__":

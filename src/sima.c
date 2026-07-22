@@ -14,9 +14,9 @@
 
 // Modo SIMA: monta BG0/BG1, carga las 3 celdas de arte que el crawler usa de
 // verdad (Tarea 3, graphics/sima/gen.py) y pinta la sala del piso actual con
-// SimaRoom_GetTile (src/sima_rooms.c). Sin jugador todavia (eso es fuera de
-// alcance de esta tarea): aqui se demuestra que el pipeline grafico pinta las
-// salas reales de punta a punta.
+// SimaRoom_GetTile (src/sima_rooms.c). El jugador (Tarea 4) vive en
+// src/sima_actors.c: este archivo solo lo inicializa y lo actualiza cada
+// frame desde CB2_SimaMain, sin conocer su representacion interna.
 
 // Una pantalla de GBA son 240x160 px. El arte de SIMA usa celdas de 16x16,
 // pero el hardware solo tiene tiles de 8x8 -- cada celda de arte ocupa 2x2
@@ -67,6 +67,7 @@ static void VBlankCB_Sima(void)
 static void CB2_SimaMain(void)
 {
     RunTasks();
+    SimaActors_UpdatePlayer();
     AnimateSprites();
     BuildOamBuffer();
     // Imprescindible aunque esta tarea todavia no imprima nada: sin esto el
@@ -176,6 +177,11 @@ void CB2_InitSima(void)
 
     case 1:
         SetupGraphics();
+        // Piso 0 fijo: las escaleras todavia no cambian de piso (fuera de
+        // alcance de la Tarea 4). SimaActors_InitPlayer vive en
+        // src/sima_actors.c y coloca el sprite del jugador en el '@' de la
+        // sala (SimaRoom_GetSpawn).
+        SimaActors_InitPlayer(0);
         SetGpuReg(REG_OFFSET_DISPCNT, DISPCNT_OBJ_ON | DISPCNT_BG0_ON | DISPCNT_BG1_ON | DISPCNT_OBJ_1D_MAP);
 
         // BeginNormalPaletteFade no encola si ya hay un fundido activo (ver
