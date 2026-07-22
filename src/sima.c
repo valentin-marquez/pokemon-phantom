@@ -12,9 +12,9 @@
 #include "text.h"
 #include "constants/rgb.h"
 
-// Modo SIMA: monta BG0/BG1, carga las 3 celdas de arte que el crawler usa de
-// verdad (Tarea 3, graphics/sima/gen.py) y pinta la sala del piso actual con
-// SimaRoom_GetTile (src/sima_rooms.c). El jugador (Tarea 4) vive en
+// Modo SIMA: monta BG0/BG1, carga el atlas de celdas de arte que el crawler
+// usa de verdad (graphics/sima/rooms.py) y pinta la sala del piso actual con
+// SimaRoom_GetTileGfx (src/sima_rooms.c). El jugador (Tarea 4) vive en
 // src/sima_actors.c: este archivo solo lo inicializa y lo actualiza cada
 // frame desde CB2_SimaMain, sin conocer su representacion interna. Pisar una
 // escalera (Tarea 5) funde a negro, repinta BG0 con SimaRoom_NextFloor y
@@ -32,13 +32,15 @@ static const u16 sTilesPal[] = INCBIN_U16("graphics/sima/grounds.gbapal");
 // en la Tarea 1 para las 10 hojas); grounds.gbapal vale para tiles.4bpp
 // tambien porque graphics/sima/gen.py recorta sin recuantizar.
 
-// tiles.4bpp son 3 celdas de 16x16 en fila (48x16 px = 12 tiles de hardware
-// de 8x8), una por SimaTile en este orden: SIMA_TILE_FLOOR, SIMA_TILE_WALL,
-// SIMA_TILE_STAIRS (ver TILE_CELLS en graphics/sima/gen.py). PlaceCell ya
-// convierte una coordenada de celda de arte (16x16) a su indice de tile de
-// hardware (8x8) dentro de una hoja de `sheetTilesWide` tiles -- basta con
-// pasarle el indice del SimaTile como artCellX y artCellY=0.
-#define TILES_SHEET_TILES_WIDE 6  // 48px / 8px
+// tiles.4bpp es el atlas de celdas COMPUESTAS que genera
+// graphics/sima/rooms.py: una fila de N celdas de 16x16 (N =
+// SimaRoom_GetSheetTilesWide()/2), una por cada combinacion distinta de
+// (fondo, objeto) que aparece de verdad en alguna sala (ver el comentario
+// de compose() en rooms.py sobre por que hace falta componer de antemano:
+// un BG de la GBA no apila dos capas). PlaceCell ya convierte una
+// coordenada de celda de arte (16x16) a su indice de tile de hardware
+// (8x8) dentro de una hoja de `sheetTilesWide` tiles -- basta con pasarle
+// el indice de SimaRoom_GetTileGfx como artCellX y artCellY=0.
 
 static const struct BgTemplate sSimaBgTemplates[] = {
     // BG0: la sala. Prioridad 1 (por detras de HUD/texto).
@@ -197,20 +199,23 @@ static void PlaceCell(u8 bg, u8 destCol, u8 destRow, u16 sheetTilesWide,
     CopyToBgTilemapBufferRect(bg, entries, destCol * 2, destRow * 2, 2, 2);
 }
 
-// Pinta en BG0 la sala real de `floor` leyendo SimaRoom_GetTile
-// (src/sima_rooms.c) celda a celda. Se llama una vez al montar el modo
-// (SetupGraphics) y de nuevo cada vez que UpdateFloorTransition cambia de
-// piso al pisar una escalera (Tarea 5).
+// Pinta en BG0 la sala real de `floor` leyendo SimaRoom_GetTileGfx
+// (src/sima_rooms.c) celda a celda -- el indice de la celda YA COMPUESTA
+// (fondo + objeto) en graphics/sima/tiles.png, no el SimaTile de colision
+// (ese es SimaRoom_GetTile, para IsSolid/IsStairs). Se llama una vez al
+// montar el modo (SetupGraphics) y de nuevo cada vez que
+// UpdateFloorTransition cambia de piso al pisar una escalera (Tarea 5).
 static void DrawRoom(u8 floor)
 {
     s8 x, y;
+    u16 sheetTilesWide = SimaRoom_GetSheetTilesWide();
 
     for (y = 0; y < SIMA_ROOM_H; y++)
     {
         for (x = 0; x < SIMA_ROOM_W; x++)
         {
-            u8 tile = SimaRoom_GetTile(floor, x, y);
-            PlaceCell(0, x, y, TILES_SHEET_TILES_WIDE, 0, tile, 0);
+            u16 tileGfx = SimaRoom_GetTileGfx(floor, x, y);
+            PlaceCell(0, x, y, sheetTilesWide, 0, (u8)tileGfx, 0);
         }
     }
 }

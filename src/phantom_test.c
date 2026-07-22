@@ -95,47 +95,106 @@ static void Test_PhantomExecutionSeen(void)
     PHANTOM_ASSERT(FlagGet(FLAG_PHANTOM_SAW_EXECUTION) == TRUE, "saw-execution");
 }
 
-// Test 7 (SIMA): las salas son validas por construccion -- cerradas por muros,
-// con exactamente una escalera y un spawn transitable. Un fallo aqui es una
-// sala mal dibujada, y sin esta comprobacion solo se detectaria jugando.
+// Test 7 (SIMA): las salas son validas por construccion. Ya NO exige que el
+// anillo de borde entero sea solido -- las salas de verdad (dibujadas en el
+// editor visual, tools/sima-editor/salas.json) pueden tener un hueco en el
+// borde a proposito (el piso 1 real tiene un arco de entrada en (1,0),
+// sobre el borde superior, transitable). Lo que de verdad protege a quien
+// dibuja la sala es: que el spawn y la escalera existan y no sean solidos,
+// y que la escalera sea ALCANZABLE A PIE desde el spawn -- si no, la sala
+// encierra al jugador sin salida. Se comprueba con una busqueda en anchura
+// (BFS) sobre las casillas no solidas.
 static void Test_SimaRoomsValid(void)
 {
     u8 floor;
-    bool8 allEnclosed = TRUE;
-    bool8 allHaveOneStairs = TRUE;
     bool8 allSpawnsWalkable = TRUE;
+    bool8 allOneStairs = TRUE;
+    bool8 allStairsWalkable = TRUE;
+    bool8 allStairsReachable = TRUE;
 
     for (floor = 0; floor < SIMA_FLOOR_COUNT; floor++)
     {
         s8 x, y;
-        u32 stairs = 0;
-        for (x = 0; x < SIMA_ROOM_W; x++)
-        {
-            if (!SimaRoom_IsSolid(floor, x, 0) || !SimaRoom_IsSolid(floor, x, SIMA_ROOM_H - 1))
-                allEnclosed = FALSE;
-        }
+        s8 sx, sy;
+        s8 stx = -1;
+        s8 sty = -1;
+        u32 stairsCount = 0;
+        bool8 visited[SIMA_ROOM_H][SIMA_ROOM_W];
+        s8 queueX[SIMA_ROOM_W * SIMA_ROOM_H];
+        s8 queueY[SIMA_ROOM_W * SIMA_ROOM_H];
+        static const s8 sDx[4] = {1, -1, 0, 0};
+        static const s8 sDy[4] = {0, 0, 1, -1};
+        u16 head = 0;
+        u16 tail = 0;
+        bool8 stairsReached = FALSE;
+
+        SimaRoom_GetSpawn(floor, &sx, &sy);
+        if (SimaRoom_IsSolid(floor, sx, sy))
+            allSpawnsWalkable = FALSE;
+
         for (y = 0; y < SIMA_ROOM_H; y++)
         {
-            if (!SimaRoom_IsSolid(floor, 0, y) || !SimaRoom_IsSolid(floor, SIMA_ROOM_W - 1, y))
-                allEnclosed = FALSE;
-        }
-        for (y = 0; y < SIMA_ROOM_H; y++)
             for (x = 0; x < SIMA_ROOM_W; x++)
+            {
                 if (SimaRoom_IsStairs(floor, x, y))
-                    stairs++;
-        if (stairs != 1)
-            allHaveOneStairs = FALSE;
-        {
-            s8 sx, sy;
-            SimaRoom_GetSpawn(floor, &sx, &sy);
-            if (SimaRoom_IsSolid(floor, sx, sy))
-                allSpawnsWalkable = FALSE;
+                {
+                    stx = x;
+                    sty = y;
+                    stairsCount++;
+                }
+                visited[y][x] = FALSE;
+            }
         }
+
+        if (stairsCount != 1)
+            allOneStairs = FALSE;
+        if (stx < 0 || SimaRoom_IsSolid(floor, stx, sty))
+            allStairsWalkable = FALSE;
+
+        // BFS desde el spawn: si el spawn ya es solido (fallo detectado
+        // arriba) no hay nada que recorrer y stairsReached se queda en FALSE,
+        // lo cual es correcto (una sala rota no puede certificarse alcanzable).
+        if (!SimaRoom_IsSolid(floor, sx, sy))
+        {
+            visited[sy][sx] = TRUE;
+            queueX[tail] = sx;
+            queueY[tail] = sy;
+            tail++;
+
+            while (head < tail)
+            {
+                s8 cx = queueX[head];
+                s8 cy = queueY[head];
+                u8 dir;
+                head++;
+
+                if (cx == stx && cy == sty)
+                    stairsReached = TRUE;
+
+                for (dir = 0; dir < 4; dir++)
+                {
+                    s8 nx = cx + sDx[dir];
+                    s8 ny = cy + sDy[dir];
+                    if (nx < 0 || nx >= SIMA_ROOM_W || ny < 0 || ny >= SIMA_ROOM_H)
+                        continue;
+                    if (visited[ny][nx] || SimaRoom_IsSolid(floor, nx, ny))
+                        continue;
+                    visited[ny][nx] = TRUE;
+                    queueX[tail] = nx;
+                    queueY[tail] = ny;
+                    tail++;
+                }
+            }
+        }
+
+        if (!stairsReached)
+            allStairsReachable = FALSE;
     }
 
-    PHANTOM_ASSERT(allEnclosed, "sima-rooms-enclosed");
-    PHANTOM_ASSERT(allHaveOneStairs, "sima-rooms-one-stairs");
     PHANTOM_ASSERT(allSpawnsWalkable, "sima-spawns-walkable");
+    PHANTOM_ASSERT(allOneStairs, "sima-rooms-one-stairs");
+    PHANTOM_ASSERT(allStairsWalkable, "sima-stairs-walkable");
+    PHANTOM_ASSERT(allStairsReachable, "sima-stairs-reachable-from-spawn");
     // Fuera de rango debe ser solido en las cuatro direcciones, o el jugador se sale de la sala.
     PHANTOM_ASSERT(SimaRoom_IsSolid(0, -1, 5), "sima-oob-solid-left");
     PHANTOM_ASSERT(SimaRoom_IsSolid(0, SIMA_ROOM_W, 5), "sima-oob-solid-right");
@@ -148,7 +207,8 @@ static void Test_SimaRoomsValid(void)
 // medio, se puede probar aqui igual que Test_SimaRoomsValid prueba
 // SimaRoom_IsSolid. Cabe en la casilla de spawn de cada piso (que
 // Test_SimaRoomsValid ya certifico transitable), no cabe en la esquina
-// superior izquierda de la sala (dentro del anillo de muros en las tres) ni
+// superior izquierda de la sala (solida en todos los pisos reales, aunque el
+// borde ya no sea un anillo cerrado -- ver el arco de entrada del piso 1) ni
 // muy fuera de sus limites.
 static void Test_SimaPlayerBoxFits(void)
 {
@@ -182,10 +242,10 @@ static void Test_SimaPlayerBoxFits(void)
     // olvidando el "-1" -- right pasaria de 29 a 30 y ambos numeros siguen
     // cayendo en la misma celda [16,31], el test seguiria en verde).
     //
-    // Se usa el piso 0 (src/sima_rooms.c, sFloor0), fila y=1: el pasillo
-    // superior "#@...........*#" es todo suelo de columna 1 a 13 y muro en
-    // la columna 14 (x=14 es '#'). Se elige el borde DERECHO del pasillo
-    // (columna 14) en vez del izquierdo porque es ahi donde se calcula
+    // Se usa el piso 0 real (tools/sima-editor/salas.json), fila y=1: las
+    // columnas 1-10 son suelo y la columna 11 es muro (comprobado contra
+    // src/sima_rooms_data.h, sRoomSolid). Se elige el borde DERECHO de ese
+    // tramo (columna 11) en vez del izquierdo porque es ahi donde se calcula
     // "right" -- la variable que el bug hipotetico de arriba corrompe; el
     // margen izquierdo usa "left", que no tiene ese "-1" y no lo detectaria.
     //
@@ -201,29 +261,41 @@ static void Test_SimaPlayerBoxFits(void)
     //   top    = y + 2  = 18  -> fila 18/16 = 1
     //   bottom = top + 11 = 29 -> fila 29/16 = 1 (misma fila que top)
     //
-    // Muro (columna 14) empieza en el pixel 14*16 = 224. Suelo (columna 13,
-    // la casilla '*' del pasillo) termina en el pixel 13*16+15 = 223.
+    // Muro (columna 11) empieza en el pixel 11*16 = 176. Suelo (columna 10)
+    // termina en el pixel 10*16+15 = 175.
     //
-    // Caso "libra por 1px" (x = 210): left = 212, right = 212+11 = 223.
-    // right/16 = 13 -> suelo en las cuatro esquinas -> debe caber (TRUE).
-    // Con el bug hipotetico (right = left+12 = 224), right/16 pasaria a 14
+    // Caso "libra por 1px" (x = 162): left = 164, right = 164+11 = 175.
+    // right/16 = 10 -> suelo en las cuatro esquinas -> debe caber (TRUE).
+    // Con el bug hipotetico (right = left+12 = 176), right/16 pasaria a 11
     // (muro) y este caso fallaria en falso -- exactamente el off-by-one que
     // el caso de abajo, solo, no distingue.
-    PHANTOM_ASSERT(SimaActors_BoxFits(0, 210, 16), "sima-box-clear-1px");
+    PHANTOM_ASSERT(SimaActors_BoxFits(0, 162, 16), "sima-box-clear-1px");
 
-    // Caso "solapa por 1px" (x = 211, un pixel mas cerca del muro): left =
-    // 213, right = 213+11 = 224. right/16 = 14 (muro, columna 14) -> la
+    // Caso "solapa por 1px" (x = 163, un pixel mas cerca del muro): left =
+    // 165, right = 165+11 = 176. right/16 = 11 (muro, columna 11) -> la
     // esquina superior derecha de la caja cae sobre el muro -> no debe caber
     // (FALSE).
-    PHANTOM_ASSERT(!SimaActors_BoxFits(0, 211, 16), "sima-box-blocked-1px");
+    PHANTOM_ASSERT(!SimaActors_BoxFits(0, 163, 16), "sima-box-blocked-1px");
 }
 
 // Test 9 (Task 5): la progresion de pisos satura en el ultimo. Si desbordara,
-// SimaRoom_GetTile leeria fuera de la tabla de salas.
+// SimaRoom_GetTile leeria fuera de la tabla de salas. Generico sobre
+// SIMA_FLOOR_COUNT (hoy 1, mientras los pisos 2/3 esten en stand-by en el
+// editor) en vez de asumir un numero fijo de pisos.
 static void Test_SimaFloorProgression(void)
 {
-    PHANTOM_ASSERT(SimaRoom_NextFloor(0) == 1, "sima-floor-0-to-1");
-    PHANTOM_ASSERT(SimaRoom_NextFloor(1) == 2, "sima-floor-1-to-2");
+    u8 floor;
+    bool8 allAdvanceOrSaturate = TRUE;
+
+    for (floor = 0; floor < SIMA_FLOOR_COUNT; floor++)
+    {
+        u8 next = SimaRoom_NextFloor(floor);
+        u8 expected = (floor + 1 >= SIMA_FLOOR_COUNT) ? (u8)(SIMA_FLOOR_COUNT - 1) : (u8)(floor + 1);
+        if (next != expected)
+            allAdvanceOrSaturate = FALSE;
+    }
+
+    PHANTOM_ASSERT(allAdvanceOrSaturate, "sima-floor-progression");
     PHANTOM_ASSERT(SimaRoom_NextFloor(SIMA_FLOOR_COUNT - 1) == SIMA_FLOOR_COUNT - 1,
                    "sima-floor-saturates");
 }
