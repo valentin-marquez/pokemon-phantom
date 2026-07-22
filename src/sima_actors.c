@@ -94,38 +94,55 @@ static const struct SpriteTemplate sTmpl_SimaPlayer = {
 };
 
 // ---------------------------------------------------------------------
-// Arma del jugador (Tarea 7): sprite propio de 16x16, dos frames recortados
-// de graphics/sima/weapons.png por graphics/sima/gen.py (generate_weapon) --
-// esa hoja trae decenas de armas en rotaciones pensadas para un motor de 8
-// direcciones con giro por software; no hay una celda limpia "mirando
-// arriba/abajo/izquierda/derecha" para las 4 direcciones de SIMA, así que en
-// vez de eso se recortaron 2 frames de UN solo mandoble en su única
-// orientación diagonal (mango arriba-izquierda, punta abajo-derecha:
-// FRAME_A liso, FRAME_B con el destello de impacto) y aquí se orienta con
-// flips de OAM -- igual que el jugador reutiliza su frame de perfil para
-// izquierda/derecha en vez de tener arte por separado.
+// Arma del jugador (Tarea 7, rehecha en la tarea de sensación del golpe):
+// sprite propio de 16x16, 4 frames recortados de graphics/sima/weapons.png
+// por graphics/sima/gen.py (generate_weapon). La versión original usaba 2
+// frames de UN mandoble en su única orientación diagonal disponible en la
+// hoja (mango arriba-izquierda, punta abajo-derecha) y lo orientaba con los
+// 4 combos de flip de OAM -- funcionaba para "esto es un arma", pero el
+// dueño reportó que el golpe "no se ve bien", "se buguea por dirección" y
+// sobre todo que no podía leer A QUÉ CASILLA le pegaba: una diagonal fija
+// usada para 4 direcciones cardinales es intrínsecamente ambigua (↘ sirve
+// tanto para ABAJO como para DERECHA, así que dos direcciones distintas
+// comparten el mismo dibujo) por mucho que la caja de golpe real (más abajo,
+// SimaActors_WeaponHitbox, que NO cambió) apunte a la casilla correcta.
 //
-// Reverificado en la tarea de sensación de movimiento (releyendo
-// weapons.png celda a celda, con un script de componentes conexos en vez de
-// a ojo): TODA la hoja (528x768, 33x48 celdas) es así -- dagas/espadas
-// (filas 0-10), un shuriken/bumerán girando (filas 13-22, casi simétrico,
-// no sirve para orientar), libros/pociones abriéndose (filas 24-38) y
-// piquetas (filas 41-47) están cada una en una única familia de rotaciones
-// diagonales de 3D-a-2D (animación de giro/lanzamiento), NINGUNA con una
-// celda realmente horizontal o vertical. No hay arte cardinal que rescatar;
-// el implementador anterior no se lo perdió, no existe. Ver
-// UpdateAttack más abajo para la solución de flips + arco de barrido
-// cosmético elegida en su lugar.
+// Solución: en vez de una espada, un ARCO DE TAJO (media luna) que se dibuja
+// SOBRE la casilla golpeada -- eso ya no es ambiguo, se lee como "estoy
+// cortando AQUÍ" sin depender de que el jugador interprete la orientación
+// del arma. La hoja trae dos arcos que curvan limpiamente en un solo eje
+// (a diferencia de las dagas/espadas, que son todas diagonales -- ver
+// generate_weapon en gen.py para el resto de la hoja): un par vertical
+// (curva arriba/abajo, para golpes ARRIBA/ABAJO) y un par horizontal (para
+// IZQUIERDA/DERECHA). Cada par son las 2 fases del golpe -- FRAME_A durante
+// el windup, FRAME_B durante el impacto, igual que antes -- y la dirección
+// cardinal dentro de cada par se resuelve con UN flip de OAM (ver
+// UpdateAttack): VFLIP entre arriba/abajo dentro del par vertical, HFLIP
+// entre izquierda/derecha dentro del horizontal. Los arcos NO son simétricos
+// -- tienen más "masa" de píxeles hacia un lado (medido por centroide al
+// recortarlos) -- así que el flip se elige para que esa masa quede siempre
+// en el borde de la casilla más alejado del jugador, como si el filo
+// terminara de cruzarla; el lado fino/hueco queda cerca del jugador. Con eso
+// las 4 direcciones tienen arte que SÍ se distingue entre sí (2 imágenes de
+// origen distintas, no una sola girada), y encima cada una individualmente
+// se lee como "hacia allá" en vez de "en diagonal, adivina cuál mitad
+// cuenta".
 // ---------------------------------------------------------------------
 
 static const u32 sWeaponGfx[] = INCBIN_U32("graphics/sima/weapon.4bpp");
 
 #define TAG_SIMA_WEAPON 0x6004
 
-#define WEAPON_SHEET_FRAMES    2
+#define WEAPON_SHEET_FRAMES    4
 #define WEAPON_TILES_PER_FRAME 4  // 16x16 = 2x2 tiles de hardware, igual que jugador/enemigos
-#define FRAME_WEAPON_A (0 * WEAPON_TILES_PER_FRAME)  // mandoble liso (windup)
-#define FRAME_WEAPON_B (1 * WEAPON_TILES_PER_FRAME)  // mandoble + destello (impacto)
+// Orden de graphics/sima/gen.py (WEAPON_ARC_CELLS): vertical windup/activo,
+// luego horizontal windup/activo. La dirección cardinal (arriba vs abajo
+// dentro del par vertical, izquierda vs derecha dentro del horizontal) NO
+// vive aquí -- es un flip de OAM elegido en UpdateAttack según sAttackFacing.
+#define FRAME_WEAPON_VERT_A  (0 * WEAPON_TILES_PER_FRAME)  // arco vertical, windup
+#define FRAME_WEAPON_VERT_B  (1 * WEAPON_TILES_PER_FRAME)  // arco vertical, impacto
+#define FRAME_WEAPON_HORIZ_A (2 * WEAPON_TILES_PER_FRAME)  // arco horizontal, windup
+#define FRAME_WEAPON_HORIZ_B (3 * WEAPON_TILES_PER_FRAME)  // arco horizontal, impacto
 
 static const struct OamData sOam_SimaWeapon = {
     .affineMode = ST_OAM_AFFINE_OFF,
@@ -167,11 +184,13 @@ static const struct SpriteTemplate sTmpl_SimaWeapon = {
 #define ATTACK_RECOVERY_FRAMES 9  // arma oculta, hasta que le toca el turno a los enemigos
 #define ATTACK_TOTAL_FRAMES (ATTACK_WINDUP_FRAMES + ATTACK_ACTIVE_FRAMES + ATTACK_RECOVERY_FRAMES)
 
-// NÚMERO DE GUSTO (mejora de sensación, ver UpdateAttack): desplazamiento en
-// píxeles del arco de barrido cosmético del arma, perpendicular a la
-// dirección del golpe. 3px es visible sin desalinear el arma de su casilla
-// adyacente al punto de parecer flotando fuera de sitio.
-#define ATTACK_SWEEP_PX 3
+// ATTACK_SWEEP_PX (el desplazamiento cosmético perpendicular que tenía el
+// arma mientras fue una espada diagonal) se quitó en la tarea de sensación
+// del golpe: existía para simular que el mandoble "venía de un lado" porque
+// su dibujo por sí solo no comunicaba dirección. El arco de tajo (ver el
+// comentario grande sobre WEAPON_SHEET_FRAMES) ya resuelve eso con su propia
+// silueta -- añadirle un bamboleo de píxeles solo restaría precisión al
+// mensaje nuevo ("el corte está exactamente sobre esta casilla, quieto").
 
 // Tamaño de una casilla de la rejilla de sala, en píxeles (ver SIMA_ROOM_W/H
 // en sima_rooms.h). No vive ahí porque es un detalle de cómo se ANIMA el
@@ -761,6 +780,7 @@ static void UpdatePlayerSprite(void)
 static void UpdateAttack(void)
 {
     s16 hitX, hitY;
+    bool8 vertical, vFlip, hFlip;
 
     if (!sWeaponActive)
     {
@@ -774,48 +794,38 @@ static void UpdateAttack(void)
     }
 
     SimaActors_WeaponHitbox(sAttackFacing, sPlayerX, sPlayerY, &hitX, &hitY);
-    // Arco de barrido (mejora de sensación, ver el comentario de arriba de
-    // este bloque): desplazamiento COSMÉTICO perpendicular a la dirección
-    // del golpe, hacia un lado durante el windup y hacia el lado contrario
-    // durante el frame activo -- simula que el arma "viene de un lado y
-    // termina en el otro" en vez de solo aparecer/desaparecer en el mismo
-    // sitio. No toca hitX/hitY (la caja real de golpe, comprobada por
-    // SimaActors_UpdateEnemies vía AttackHitboxActive/SimaActors_WeaponHitbox,
-    // sigue siendo exactamente la casilla adyacente completa) -- es puro
-    // dibujo, no cambia a qué enemigos alcanza el golpe. NÚMERO DE GUSTO:
-    // ATTACK_SWEEP_PX, ver su definición.
-    {
-        s16 sweepX = 0, sweepY = 0;
-        s16 sweep = (sAttackTimer <= ATTACK_WINDUP_FRAMES) ? -ATTACK_SWEEP_PX : ATTACK_SWEEP_PX;
+    // El arco se dibuja CENTRADO en la casilla golpeada, sin desplazamiento
+    // -- a diferencia de la espada diagonal (ver el historial de esta
+    // función), aquí la posición sola ya comunica "esta es la casilla", así
+    // que cualquier bamboleo solo restaría precisión al mensaje.
+    gSprites[sWeaponSpriteId].x = hitX + 8;
+    gSprites[sWeaponSpriteId].y = hitY + 8;
 
-        switch (sAttackFacing)
-        {
-        case SIMA_FACING_UP:
-        case SIMA_FACING_DOWN:
-            sweepX = sweep;   // golpe vertical: el barrido se ve en X
-            break;
-        case SIMA_FACING_LEFT:
-        case SIMA_FACING_RIGHT:
-            sweepY = sweep;   // golpe horizontal: el barrido se ve en Y
-            break;
-        }
-        gSprites[sWeaponSpriteId].x = hitX + 8 + sweepX;
-        gSprites[sWeaponSpriteId].y = hitY + 8 + sweepY;
-    }
+    // Orientación: primero el EJE (vertical para arriba/abajo, horizontal
+    // para izquierda/derecha) decide qué PAR de frames usar; el flip de OAM
+    // decide cuál de las dos direcciones de ese eje. Ver el comentario
+    // grande sobre WEAPON_SHEET_FRAMES para el porqué de cada flip (masa de
+    // píxeles del arco hacia el borde de la casilla más lejano al jugador).
+    vertical = (sAttackFacing == SIMA_FACING_UP) || (sAttackFacing == SIMA_FACING_DOWN);
+    vFlip = (sAttackFacing == SIMA_FACING_UP);     // arco vertical: masa nativa abajo -> voltear para ARRIBA
+    hFlip = (sAttackFacing == SIMA_FACING_LEFT);   // arco horizontal: masa nativa a la derecha -> voltear para IZQUIERDA
+    gSprites[sWeaponSpriteId].oam.matrixNum = (hFlip ? ST_OAM_HFLIP : 0) | (vFlip ? ST_OAM_VFLIP : 0);
 
     if (sAttackTimer <= ATTACK_WINDUP_FRAMES)
     {
         // Windup: el arma ya se ve (telégrafo del golpe) pero todavía no daña.
         gSprites[sWeaponSpriteId].invisible = FALSE;
-        gSprites[sWeaponSpriteId].oam.tileNum = gSprites[sWeaponSpriteId].sheetTileStart + FRAME_WEAPON_A;
+        gSprites[sWeaponSpriteId].oam.tileNum = gSprites[sWeaponSpriteId].sheetTileStart
+            + (vertical ? FRAME_WEAPON_VERT_A : FRAME_WEAPON_HORIZ_A);
     }
     else if (sAttackTimer <= ATTACK_WINDUP_FRAMES + ATTACK_ACTIVE_FRAMES)
     {
-        // Activo: el destello de impacto, y AttackHitboxActive (usado por
+        // Activo: variante de impacto, y AttackHitboxActive (usado por
         // SimaActors_UpdateEnemies) empieza a devolver TRUE en esta misma
         // ventana -- ver la comprobación exacta ahí, es el mismo rango.
         gSprites[sWeaponSpriteId].invisible = FALSE;
-        gSprites[sWeaponSpriteId].oam.tileNum = gSprites[sWeaponSpriteId].sheetTileStart + FRAME_WEAPON_B;
+        gSprites[sWeaponSpriteId].oam.tileNum = gSprites[sWeaponSpriteId].sheetTileStart
+            + (vertical ? FRAME_WEAPON_VERT_B : FRAME_WEAPON_HORIZ_B);
     }
     else
     {
@@ -823,27 +833,6 @@ static void UpdateAttack(void)
         // (el turno todavía no ha pasado a los enemigos) hasta que
         // sAttackTimer llegue a ATTACK_TOTAL_FRAMES.
         gSprites[sWeaponSpriteId].invisible = TRUE;
-    }
-
-    // Orientación por flip de OAM, no por arte nuevo (ver el comentario de
-    // sTmpl_SimaWeapon): el mandoble recortado apunta en su dibujo original
-    // de mango arriba-izquierda a punta abajo-derecha (↘). Con solo hFlip y
-    // vFlip hay 4 combinaciones posibles, cada una apuntando a una de las 4
-    // diagonales: sin flip ↘, hFlip ↙, vFlip ↗, ambos ↖. Cada diagonal
-    // "sirve" para dos de las cuatro direcciones cardinales (↘ vale para
-    // ABAJO o DERECHA, ↙ para ABAJO o IZQUIERDA, ↗ para ARRIBA o DERECHA, ↖
-    // para ARRIBA o IZQUIERDA) -- CON UNA SOLA COMBINACIÓN NO ALCANZAN LAS 4
-    // DIRECCIONES SIN REPETIR. Esta asignación usa las 4 combinaciones, una
-    // por dirección, eligiendo para cada una la diagonal que SÍ la tiene
-    // como componente:
-    //   ABAJO  -> sin flip (↘: abajo+derecha)
-    //   DERECHA -> vFlip   (↗: arriba+derecha)
-    //   ARRIBA -> ambos    (↖: arriba+izquierda)
-    //   IZQUIERDA -> hFlip (↙: abajo+izquierda)
-    {
-        bool8 hFlip = (sAttackFacing == SIMA_FACING_LEFT) || (sAttackFacing == SIMA_FACING_UP);
-        bool8 vFlip = (sAttackFacing == SIMA_FACING_RIGHT) || (sAttackFacing == SIMA_FACING_UP);
-        gSprites[sWeaponSpriteId].oam.matrixNum = (hFlip ? ST_OAM_HFLIP : 0) | (vFlip ? ST_OAM_VFLIP : 0);
     }
 
     sAttackTimer++;
@@ -856,7 +845,8 @@ static void UpdateAttack(void)
 
 // Función pura (Tarea 7): ¿está la caja de golpe del arma activa AHORA
 // MISMO? Envuelve el mismo rango de sAttackTimer que UpdateAttack usa para
-// elegir FRAME_WEAPON_B, para que ambas lecturas de "¿está golpeando?"
+// elegir el frame de impacto (FRAME_WEAPON_VERT_B/FRAME_WEAPON_HORIZ_B),
+// para que ambas lecturas de "¿está golpeando?"
 // nunca se puedan desincronizar (una sola definición de la ventana activa).
 // No pura respecto al reloj de la partida (lee sAttackTimer, estado), pero
 // no depende de sprites ni de ningún enemigo -- SimaActors_UpdateEnemies la

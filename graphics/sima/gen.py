@@ -204,47 +204,64 @@ def generate_hud_hearts():
     print(f"hud_hearts.png  ({out.width}x{out.height})")
 
 
-# Arma del jugador (Tarea 7): dos frames de un mismo mandoble recortados de
-# weapons.png (hoja de 33x48 celdas de 16x16 con decenas de armas y
-# direcciones -- no hay una unica celda "arma mirando arriba/abajo/izq/der"
-# limpia en esa hoja; la mayoria de sus iconos son diagonales pensados para
-# rotarse con motor propio, no para un juego de 4 direcciones como SIMA). Se
-# eligieron estos dos por inspeccion visual (ver informe de la Tarea 7):
-# ambos son la MISMA espada en la misma orientacion diagonal (mango arriba-
-# izquierda, punta abajo-derecha) -- FRAME_A es el mandoble "en el aire",
-# FRAME_B es el mismo golpe con un destello de impacto (las motas sueltas
-# alrededor de la hoja). En juego se muestran en secuencia (A al iniciar el
-# golpe, B durante el impacto) y se orientan por direccion con flips de OAM
-# (ST_OAM_HFLIP/VFLIP en src/sima_actors.c), no con arte nuevo por direccion:
-# la diagonal ya sirve para abajo/derecha tal cual, y para arriba/izquierda
-# volteada, sin que haga falta recortar mas celdas de la hoja.
+# Arma del jugador (Tarea 8, sensacion del golpe): CUATRO arcos de tajo (media
+# luna) recortados de weapons.png, en vez de los dos frames de mandoble
+# diagonal de antes (ver git log de esta funcion para esa version). Motivo:
+# el dueño reporto que el golpe "no se ve bien" / "no se donde le pegamos" --
+# una espada dibujada en diagonal (unica orientacion disponible en toda la
+# hoja, ver el comentario largo en src/sima_actors.c) no señala una casilla
+# cardinal sin ambiguedad por mucho flip de OAM que se le aplique. La hoja
+# tiene, en otra zona (armas arrojadizas/efectos, no las dagas/espadas de las
+# filas 0-10), un par de arcos que SI curvan limpiamente en un eje: un par
+# vertical (para golpes arriba/abajo) y un par horizontal (para izq/derecha).
+# A diferencia de esas dagas, estos arcos SI estan centrados en su celda de
+# 16x16 (medido: bounding box real dentro de cada celda, sin pixeles pegados
+# al borde ni cortados), asi que el recorte es alineado a rejilla como
+# TILE_CELLS/PLAYER_WALK_CELLS de mas arriba, no en pixeles sueltos.
 #
-# Recortes en PIXELES, no en celdas de 16x16 (a diferencia de TILE_CELLS/
-# PLAYER_WALK_CELLS/HUD_HEART_CELLS de mas arriba): el pivote de cada arma en
-# esta hoja no esta centrado en su celda, asi que un recorte alineado a la
-# rejilla cortaria la hoja o el mango. Las cajas de abajo son el bounding box
-# real de cada icono (medido por script, sin pixeles rojos de sobra) mas un
-# margen de 1-5px para que no quede pegado al borde -- no tocar sin remedir
-# con el mismo metodo (buscar el rectangulo no-transparente de esa zona de
-# weapons.png).
-WEAPON_FRAME_BOXES = [
-    (2, 9, 18, 25),    # FRAME_A: mandoble liso, celdas (0,0)-(1,1) de weapons.png
-    (50, 3, 66, 19),   # FRAME_B: mismo golpe + destello, celdas (3,0)-(4,1)
+# Cada par (vertical, horizontal) son dos iconos DISTINTOS de la hoja, no un
+# frame y su flip -- se usan como las dos fases del golpe (A = windup, B =
+# activo/impacto), igual que antes hacian FRAME_A/FRAME_B del mandoble; la
+# pequeña diferencia de silueta entre A y B da algo de vida al golpe en vez
+# de un frame identico repetido. La direccion cardinal la decide un flip de
+# OAM sobre ese PAR (ST_OAM_VFLIP arriba/abajo dentro del par vertical,
+# ST_OAM_HFLIP izquierda/derecha dentro del par horizontal) -- ver
+# UpdateAttack en src/sima_actors.c para la eleccion exacta de flip por
+# direccion y su razonamiento (centroide de pixeles: cada arco tiene mas
+# "masa" hacia un lado, y ese lado se orienta hacia el borde de la casilla
+# mas lejano al jugador, como si el filo terminase de cruzarla).
+WEAPON_ARC_CELLS = [
+    (6, 1),   # FRAME_VERT_A (windup, vertical): arco arriba/abajo, masa abajo
+    (8, 7),   # FRAME_VERT_B (activo, vertical): idem, variante de impacto
+    (7, 5),   # FRAME_HORIZ_A (windup, horizontal): arco izq/derecha, masa a la derecha
+    (7, 9),   # FRAME_HORIZ_B (activo, horizontal): idem, variante de impacto
 ]
 
 
 def generate_weapon():
-    """Recorta los dos frames de WEAPON_FRAME_BOXES de weapons.png (ya
-    reindexado) y los empaqueta en una tira horizontal de 32x16, igual que
+    """Recorta las 4 celdas de WEAPON_ARC_CELLS de weapons.png (ya
+    reindexado) y las empaqueta en una tira horizontal de 64x16, igual que
     generate_player_walk(): graphics_file_rules.mk la convierte con -mwidth 2
     -mheight 2 para que cada celda de 16x16 quede en 4 tiles de hardware
-    contiguos (formato OBJ)."""
+    contiguos (formato OBJ). weapons.png ya paso por convert() (arriba), que
+    aborta ante cualquier color fuera de la paleta de 4 tonos de SIMA -- este
+    recorte posterior no puede colar un color nuevo, solo copia indices ya
+    validados. Aun asi se reafirma esa garantia aqui (en vez de confiar en
+    silencio en el paso previo) por si algun dia generate_weapon() se llama
+    con una fuente que no paso por convert()."""
     src_path = os.path.join(OUT, "weapons.png")
     src = Image.open(src_path)
-    out = Image.new("P", (16 * len(WEAPON_FRAME_BOXES), 16), 0)
+    valid_indices = set(range(1 + len(COLORS)))  # 0=transparente, 1..len(COLORS)
+    out = Image.new("P", (16 * len(WEAPON_ARC_CELLS), 16), 0)
     out.putpalette(src.getpalette())
-    for i, box in enumerate(WEAPON_FRAME_BOXES):
+    for i, (cellX, cellY) in enumerate(WEAPON_ARC_CELLS):
+        box = (cellX * 16, cellY * 16, cellX * 16 + 16, cellY * 16 + 16)
         cell = src.crop(box)
+        px = cell.load()
+        bad = {px[x, y] for y in range(16) for x in range(16)} - valid_indices
+        if bad:
+            sys.exit(f"ERROR: weapons.png celda {(cellX, cellY)} usa el/los "
+                      f"indice(s) {sorted(bad)}, fuera de la paleta de SIMA")
         out.paste(cell, (i * 16, 0))
     out.save(os.path.join(OUT, "weapon.png"))
     print(f"weapon.png  ({out.width}x{out.height})")
