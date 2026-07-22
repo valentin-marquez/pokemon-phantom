@@ -144,6 +144,7 @@
         <button id="export">Exportar</button>
         <button id="import">Importar lo pegado</button>
         <button id="copy">Copiar</button>
+        <button id="download">Descargar .json</button>
         <span class="sub" id="ioinfo"></span>
       </div>
     </details>
@@ -333,6 +334,20 @@ document.getElementById('copy').onclick = async () => {
   try { await navigator.clipboard.writeText(io.value); ioinfo.textContent = 'Copiado.'; ioinfo.className = 'sub'; }
   catch (e) { ioinfo.textContent = 'No se pudo copiar: selecciona el texto a mano.'; ioinfo.className = 'sub warn'; }
 };
+// Descargar como fichero: copiar 450 numeros por el chat es fragil -- una sola
+// transcripcion a mano ya corrompio un piso entero. El fichero no se puede
+// desalinear.
+document.getElementById('download').onclick = () => {
+  if (!io.value) exportData();
+  const blob = new Blob([io.value], {type: 'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'sima-salas.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  ioinfo.textContent = 'Descargado como sima-salas.json'; ioinfo.className = 'sub';
+};
+
 document.getElementById('import').onclick = () => {
   try {
     const d = JSON.parse(io.value);
