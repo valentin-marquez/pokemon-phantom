@@ -135,9 +135,11 @@ static void Test_SimaRoomsValid(void)
     PHANTOM_ASSERT(allEnclosed, "sima-rooms-enclosed");
     PHANTOM_ASSERT(allHaveOneStairs, "sima-rooms-one-stairs");
     PHANTOM_ASSERT(allSpawnsWalkable, "sima-spawns-walkable");
-    // Fuera de rango debe ser solido, o el jugador se sale de la sala.
+    // Fuera de rango debe ser solido en las cuatro direcciones, o el jugador se sale de la sala.
     PHANTOM_ASSERT(SimaRoom_IsSolid(0, -1, 5), "sima-oob-solid-left");
     PHANTOM_ASSERT(SimaRoom_IsSolid(0, SIMA_ROOM_W, 5), "sima-oob-solid-right");
+    PHANTOM_ASSERT(SimaRoom_IsSolid(0, 5, -1), "sima-oob-solid-top");
+    PHANTOM_ASSERT(SimaRoom_IsSolid(0, 5, SIMA_ROOM_H), "sima-oob-solid-bottom");
 }
 
 void PhantomTest_Run(void)
