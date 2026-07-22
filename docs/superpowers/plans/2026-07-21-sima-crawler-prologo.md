@@ -273,6 +273,27 @@ Lógica pura, sin renderizado, para que el harness pueda ejercitarla sin inputs.
 - Create: `include/sima_rooms.h`, `src/sima_rooms.c`
 - Modify: `src/phantom_test.c`, `include/phantom_test.h` (si hace falta exponer algo)
 
+- [ ] **Step 0: Recortar SOLO las celdas que SIMA usa (bloqueante)**
+
+La Tarea 2 destapó que `grounds` (832 tiles) + `walls` (896) suman **1728 tiles de
+hardware**, y el campo de índice de una entrada de tilemap son **10 bits: 1024
+máximo**. Cargar las hojas enteras es imposible *y* innecesario — el crawler usa
+tres celdas.
+
+Extender `graphics/sima/gen.py` con una función que recorte celdas de 16×16 por
+coordenada y las pegue en un `tiles.png` de 3 celdas (48×16). Celdas elegidas por
+medición de uniformidad y contraste:
+
+| Índice de celda | Origen | Celda | Color dominante |
+|---|---|---|---|
+| 0 = suelo | `grounds.png` | (12, 12) | crema `(212,210,155)` al 97 %, con motas |
+| 1 = muro | `walls.png` | (5, 1) | marrón oscuro `(88,68,34)` con vetas verdes |
+| 2 = escalera | `props.png` | (3, 0) | escalera de mano |
+
+Resultado: **12 tiles de hardware** en vez de 1728. `src/sima.c` pasa a cargar
+`tiles.4bpp` en lugar de `grounds`/`walls` enteros, y los `INCBIN` de esas dos
+hojas se retiran de `sima.c` (los PNG se quedan en el repo: los usa `gen.py`).
+
 **Interfaces:**
 - Produces:
   - `#define SIMA_ROOM_W 15` / `#define SIMA_ROOM_H 10`
