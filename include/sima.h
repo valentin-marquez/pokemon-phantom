@@ -8,12 +8,19 @@ void CB2_InitSima(void);
 // Vida del jugador (Tarea 6): 3 corazones, vease DrawHud en src/sima.c.
 #define SIMA_PLAYER_MAX_HP 3
 
-// Direccion a la que mira el jugador (y, desde la Tarea 7, tambien la
-// direccion en la que se orienta su ataque). Vivia como enum privado dentro
-// de src/sima_actors.c hasta la Tarea 7; se sube aqui porque
-// SimaActors_WeaponHitbox (mas abajo) necesita que el harness in-ROM
-// (src/phantom_test.c) pueda pasarle un facing sin depender de un simbolo
-// interno del .c.
+// Direccion. Vivia como enum privado dentro de src/sima_actors.c hasta la
+// Tarea 7; se sube aqui porque SimaActors_WeaponHitbox (mas abajo) necesita
+// que el harness in-ROM (src/phantom_test.c) pueda pasarle un facing sin
+// depender de un simbolo interno del .c. Sigue teniendo 4 valores porque el
+// PASO de movimiento (SimaActors_PlayerStepTarget/EnemyStepTarget) usa los
+// 4 -- el jugador se mueve en las 4 direcciones de la rejilla.
+//
+// Lo que SI cambio (tarea de "vista de perfil pura"): la MIRADA del jugador
+// -- el estado que decide que fila de sprite se dibuja y hacia donde sale el
+// ataque (SimaActors_WeaponHitbox) -- ya SOLO puede ser SIMA_FACING_LEFT o
+// SIMA_FACING_RIGHT. UP/DOWN se siguen usando como direccion de PASO (subir
+// o bajar en la rejilla), nunca como mirada. Ver el comentario de cabecera
+// de src/sima_actors.c.
 enum SimaFacing
 {
     SIMA_FACING_DOWN,
@@ -90,6 +97,20 @@ u8 SimaActors_GetAliveEnemyCount(void);
 // contra (px, py). Expuesta para el harness in-ROM, igual que
 // SimaActors_PlayerStepTarget.
 void SimaActors_EnemyStepTarget(u8 floor, s8 ex, s8 ey, s8 px, s8 py, s8 *outX, s8 *outY);
+
+// NÚMERO DE GUSTO (tarea de sensación), afinable jugando: distancia Manhattan
+// (en casillas) a la que un enemigo detecta al jugador y lo persigue en vez
+// de deambular. Ver el comentario junto a SimaActors_EnemyShouldChase.
+#define SIMA_ENEMY_DETECT_RANGE 4
+
+// Función pura (tarea de sensación): ¿debería un enemigo a `manhattanDist`
+// casillas del jugador perseguirlo (TRUE, SimaActors_EnemyStepTarget) o
+// deambular (FALSE) este turno? Separada del RNG que decide HACIA DÓNDE
+// deambula (ese vive sin exponer en src/sima_actors.c, EnemyWanderStep --
+// no hay semilla determinista que testear ahí) para que el harness in-ROM
+// pueda comprobar la frontera exacta del rango sin RNG de por medio.
+// Expuesta para el harness, igual que SimaActors_EnemyStepTarget.
+bool8 SimaActors_EnemyShouldChase(u8 manhattanDist);
 
 // Pura, sin sprites (harness in-ROM, igual que SimaActors_BoxFits): dado un
 // numero de enemigos vivos, ¿esta la escalera abierta? Aislada en su propia

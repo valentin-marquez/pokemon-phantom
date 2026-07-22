@@ -342,30 +342,47 @@ static void Test_SimaStairsUnlocked(void)
     PHANTOM_ASSERT(SimaRoom_GetEnemyCount(0) == 3, "sima-floor0-three-enemies");
 }
 
-// Test 12 (Tarea 7): la caja de golpe del arma (SimaActors_WeaponHitbox,
-// src/sima_actors.c) es pura -- sin sprites ni input, igual que
-// SimaActors_BoxFits/ApplyDamage -- asi que el harness in-ROM la puede
-// verificar sin poder pulsar A. Un jugador con su caja en (100, 50) [esquina
-// superior izquierda, misma convencion que SimaActors_BoxFits] debe golpear
-// la casilla ADYACENTE en cada una de las 4 direcciones (salto de 16px en el
-// eje de esa direccion, nunca la propia casilla del jugador): eso es lo que
-// hace que un golpe no pueda autolesionar y solo alcance a un enemigo que
-// este de verdad delante.
+// Test 12 (Tarea 7, recortado en la tarea de sensación/vista de perfil): la
+// caja de golpe del arma (SimaActors_WeaponHitbox, src/sima_actors.c) es
+// pura -- sin sprites ni input, igual que SimaActors_BoxFits/ApplyDamage --
+// asi que el harness in-ROM la puede verificar sin poder pulsar A. Un
+// jugador con su caja en (100, 50) [esquina superior izquierda, misma
+// convencion que SimaActors_BoxFits] debe golpear la casilla ADYACENTE a
+// cada lado (salto de 16px en el eje horizontal, nunca la propia casilla del
+// jugador): eso es lo que hace que un golpe no pueda autolesionar y solo
+// alcance a un enemigo que este de verdad delante.
+//
+// ELIMINADOS de este archivo con la vista de perfil pura: sima-weapon-hitbox-up
+// y sima-weapon-hitbox-down. No es un recorte de cobertura -- el CODIGO que
+// probaban ya no existe: SimaActors_WeaponHitbox dejo de tener casos
+// ARRIBA/ABAJO (el jugador solo mira izquierda/derecha, ver el comentario de
+// cabecera de src/sima_actors.c), asi que esos dos PHANTOM_ASSERT estarian
+// probando un comportamiento que el juego ya no puede alcanzar. Mismo
+// criterio que se aplico antes con Test_SimaPlayerBoxFits (ver el comentario
+// de Test_SimaPlayerStepTarget, mas arriba).
 static void Test_SimaWeaponHitbox(void)
 {
     s16 x, y;
-
-    SimaActors_WeaponHitbox(SIMA_FACING_DOWN, 100, 50, &x, &y);
-    PHANTOM_ASSERT(x == 100 && y == 66, "sima-weapon-hitbox-down");
-
-    SimaActors_WeaponHitbox(SIMA_FACING_UP, 100, 50, &x, &y);
-    PHANTOM_ASSERT(x == 100 && y == 34, "sima-weapon-hitbox-up");
 
     SimaActors_WeaponHitbox(SIMA_FACING_LEFT, 100, 50, &x, &y);
     PHANTOM_ASSERT(x == 84 && y == 50, "sima-weapon-hitbox-left");
 
     SimaActors_WeaponHitbox(SIMA_FACING_RIGHT, 100, 50, &x, &y);
     PHANTOM_ASSERT(x == 116 && y == 50, "sima-weapon-hitbox-right");
+}
+
+// Test 13 (tarea de sensación, rango de detección): SimaActors_EnemyShouldChase
+// (src/sima_actors.c) es la función pura que separa "hay que perseguir" de
+// "hay que deambular" del RNG que decide HACIA DÓNDE deambula (Random(), no
+// determinista, no testeable aquí -- ver el comentario junto a su
+// definición). Frontera exacta de SIMA_ENEMY_DETECT_RANGE en ambos sentidos,
+// más un caso claramente dentro y uno claramente fuera.
+static void Test_SimaEnemyShouldChase(void)
+{
+    PHANTOM_ASSERT(SimaActors_EnemyShouldChase(0) == TRUE, "sima-enemy-chase-adjacent");
+    PHANTOM_ASSERT(SimaActors_EnemyShouldChase(SIMA_ENEMY_DETECT_RANGE) == TRUE, "sima-enemy-chase-at-range");
+    PHANTOM_ASSERT(SimaActors_EnemyShouldChase(SIMA_ENEMY_DETECT_RANGE + 1) == FALSE, "sima-enemy-wander-beyond-range");
+    PHANTOM_ASSERT(SimaActors_EnemyShouldChase(255) == FALSE, "sima-enemy-wander-far");
 }
 
 void PhantomTest_Run(void)
@@ -389,6 +406,7 @@ void PhantomTest_Run(void)
     Test_SimaDamage();
     Test_SimaStairsUnlocked();
     Test_SimaWeaponHitbox();
+    Test_SimaEnemyShouldChase();
     PHANTOM_CHECKPOINT("suite-end");
     PhantomTest_Finish(gPhantomTestFailed);
 }

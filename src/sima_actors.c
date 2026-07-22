@@ -4,6 +4,7 @@
 #include "sprite.h"
 #include "decompress.h"
 #include "main.h"
+#include "random.h"
 
 // Jugador de SIMA: dungeon crawler POR TURNOS (encargo del dueño del
 // proyecto, sustituye a la version en tiempo real de la Tarea 4). La regla
@@ -15,10 +16,29 @@
 // (Tarea 7) tambien consume turno: golpeas, y despues de que termine la
 // animacion del golpe (windup+activo+recuperacion) les toca a los enemigos.
 //
+// Tarea de sensacion (esta): tres cambios sobre lo anterior, todos pedidos
+// por el dueño tras jugarlo.
+//   1. Vista de perfil pura: el sprite del jugador SOLO usa la fila de
+//      perfil de player.png (ver sPlayerFacing, mas abajo) -- nunca mira
+//      arriba/abajo, aunque SIGUE pudiendo MOVERSE en las 4 direcciones de
+//      la rejilla. sPlayerFacing (para sprite y ataque) y la direccion de UN
+//      PASO (para SimaActors_PlayerStepTarget) son cosas distintas desde
+//      ahora: la primera solo vive en {LEFT, RIGHT}, la segunda sigue
+//      aceptando las 4.
+//   2. Tap-to-turn en el eje horizontal: pulsar IZQUIERDA/DERECHA cuando el
+//      jugador NO mira ya hacia ahi solo lo GIRA (gratis, sin turno); si ya
+//      miraba hacia ahi, pulsar otra vez SI mueve (consume turno). Pulsar
+//      ARRIBA/ABAJO mueve de inmediato (consume turno) conservando la
+//      mirada izquierda/derecha actual -- no hay mirada vertical, asi que
+//      ahi no hay nada que girar. Ver UpdatePlayerInput.
+//   3. El golpe solo sale a izquierda/derecha (SimaActors_WeaponHitbox ya no
+//      soporta arriba/abajo -- ver su comentario). Para golpear a un enemigo
+//      que esta arriba o abajo, el jugador se coloca a su lado: intencional.
+//
 // Maquina de estados del turno (enum SimaTurnPhase, mas abajo):
 //   PLAYER_INPUT -> (direccion valida) -> PLAYER_MOVE -> ENEMY_STEP -> PLAYER_INPUT
 //   PLAYER_INPUT -> (A)                -> PLAYER_ATTACK -> ENEMY_STEP -> PLAYER_INPUT
-//   PLAYER_INPUT -> (direccion bloqueada) -> se gira, sigue en PLAYER_INPUT (SIN turno)
+//   PLAYER_INPUT -> (girar L/R, o direccion bloqueada) -> sigue en PLAYER_INPUT (SIN turno)
 // src/sima.c llama a SimaActors_UpdatePlayer y SimaActors_UpdateEnemies cada
 // frame desde CB2_SimaMain; cual de las dos "hace algo" en un frame dado lo
 // decide sTurnPhase, compartida por ambas porque viven en el mismo archivo.
@@ -27,6 +47,12 @@
 // destino basta -- ya no hace falta la caja de 12x12 de la version en
 // tiempo real (SimaActors_BoxFits/BoxesOverlap, eliminadas con esta tarea;
 // sus tests tambien, ver el informe).
+//
+// Enemigos (esta tarea): rango de deteccion (SIMA_ENEMY_DETECT_RANGE) en vez
+// de persecucion optima siempre -- dentro del rango persiguen (igual que
+// antes), fuera de el deambulan un paso aleatorio. Sigue siendo POR TURNOS:
+// nada de esto corre fuera del turno de los enemigos (StartEnemyTurn, mas
+// abajo). Ver el comentario junto a SimaActors_EnemyShouldChase.
 
 // player_walk.png (graphics/sima/gen.py) es una tira de 10 celdas de 16x16
 // recortadas de player.png: 3 mirando abajo (cara), 3 mirando arriba (nuca)
@@ -37,6 +63,15 @@
 // hardware CONTIGUOS (a diferencia de tiles.4bpp, que es BG y usa el barrido
 // raster de la hoja completa vía PlaceCell en src/sima.c): "celda i" empieza
 // en el tile 4*i de la hoja.
+//
+// Tarea de sensacion (vista de perfil pura): la hoja sigue trayendo las 10
+// celdas (no se toco gen.py -- cambiar que frames se cargan obliga a
+// reajustar PLAYER_SHEET_FRAMES/el tamaño de sSheet_SimaPlayer, ver la nota
+// de cabecera del archivo sobre LoadSpriteSheet), pero UpdatePlayerSprite ya
+// NUNCA elige FRAME_DOWN_*/FRAME_UP_* -- el jugador solo se dibuja de perfil
+// (FRAME_SIDE_*), volteado por OAM. Los offsets de abajo, mirando
+// abajo/arriba, se dejan documentados (y sin usar) porque siguen siendo
+// ciertos sobre el contenido real de la hoja.
 static const u32 sPlayerGfx[] = INCBIN_U32("graphics/sima/player_walk.4bpp");
 // Misma paleta única de SIMA que las celdas de sala (índice 0 transparente +
 // 4 tonos; ver src/sima.c). Se vuelve a incluir aquí (en vez de compartir el
@@ -63,7 +98,11 @@ static const u16 sPlayerPal[] = INCBIN_U16("graphics/sima/grounds.gbapal");
 #define FRAME_SIDE_STEP_C (9 * PLAYER_TILES_PER_FRAME)
 
 // enum SimaFacing vive en include/sima.h desde la Tarea 7 (lo necesita
-// SimaActors_WeaponHitbox, expuesta al harness).
+// SimaActors_WeaponHitbox, expuesta al harness). Sigue teniendo 4 valores
+// porque el PASO de movimiento (SimaActors_PlayerStepTarget) los sigue
+// usando los 4 -- lo que cambia con la vista de perfil es que sPlayerFacing
+// (mas abajo, la mirada del sprite/el ataque) ya SOLO se le asignan
+// SIMA_FACING_LEFT/SIMA_FACING_RIGHT, nunca UP/DOWN.
 
 static const struct OamData sOam_SimaPlayer = {
     .affineMode = ST_OAM_AFFINE_OFF,
@@ -127,6 +166,15 @@ static const struct SpriteTemplate sTmpl_SimaPlayer = {
 // origen distintas, no una sola girada), y encima cada una individualmente
 // se lee como "hacia allá" en vez de "en diagonal, adivina cuál mitad
 // cuenta".
+//
+// Tarea de sensación (esta): con la vista de perfil pura, sAttackFacing ya
+// SOLO puede ser IZQUIERDA/DERECHA (viene de sPlayerFacing, que ahora nunca
+// vale arriba/abajo -- ver el comentario de cabecera del archivo), así que
+// el par vertical (FRAME_WEAPON_VERT_A/B) DEJA DE USARSE en juego: UpdateAttack
+// ya no comprueba el eje, siempre usa el par horizontal. La hoja sigue
+// trayendo los 4 frames (no se tocó gen.py, mismo motivo que con
+// player_walk.png) y las constantes VERT_* se dejan documentadas porque
+// siguen describiendo el layout real de weapon.4bpp.
 // ---------------------------------------------------------------------
 
 static const u32 sWeaponGfx[] = INCBIN_U32("graphics/sima/weapon.4bpp");
@@ -394,37 +442,33 @@ bool8 SimaActors_IsPlayerIdle(void)
     return sTurnPhase == SIMA_TURN_PLAYER_INPUT;
 }
 
-// Función pura (Tarea 7): casilla de 16x16 (esquina superior izquierda, en
-// píxeles) que amenaza el arma cuando el jugador -- parado en (playerX,
-// playerY) -- ataca mirando `facing`. Siempre la casilla ADYACENTE (un salto
-// de 16px en el eje de la dirección), nunca la propia del jugador: así un
-// golpe no puede autolesionar, y solo alcanza a un enemigo que esté de
-// verdad delante, no a uno que solo comparta casilla por detrás o al lado.
-// Separada de todo estado para que el harness in-ROM la ejercite sin
-// sprites, igual que SimaActors_PlayerStepTarget.
+// Función pura (Tarea 7, restringida a izquierda/derecha en la tarea de
+// sensación): casilla de 16x16 (esquina superior izquierda, en píxeles) que
+// amenaza el arma cuando el jugador -- parado en (playerX, playerY) -- ataca
+// mirando `facing`. Siempre la casilla ADYACENTE (un salto de 16px en el eje
+// de la dirección), nunca la propia del jugador: así un golpe no puede
+// autolesionar, y solo alcanza a un enemigo que esté de verdad delante, no a
+// uno que solo comparta casilla por detrás o al lado. Separada de todo
+// estado para que el harness in-ROM la ejercite sin sprites, igual que
+// SimaActors_PlayerStepTarget.
+//
+// Con la vista de perfil pura, `facing` YA SOLO llega como
+// SIMA_FACING_LEFT/SIMA_FACING_RIGHT (viene siempre de sAttackFacing, que
+// copia a sPlayerFacing -- ver el comentario de cabecera del archivo): los
+// casos ARRIBA/ABAJO que esta función tenía se ELIMINARON, no se dejaron
+// como ramas muertas. Cualquier valor que no sea LEFT se trata como RIGHT
+// (no hay un tercer resultado razonable que devolver).
 void SimaActors_WeaponHitbox(u8 facing, s16 playerX, s16 playerY, s16 *outX, s16 *outY)
 {
     s16 x = playerX;
-    s16 y = playerY;
 
-    switch (facing)
-    {
-    case SIMA_FACING_UP:
-        y -= 16;
-        break;
-    case SIMA_FACING_DOWN:
-        y += 16;
-        break;
-    case SIMA_FACING_LEFT:
+    if (facing == SIMA_FACING_LEFT)
         x -= 16;
-        break;
-    case SIMA_FACING_RIGHT:
+    else
         x += 16;
-        break;
-    }
 
     *outX = x;
-    *outY = y;
+    *outY = playerY;
 }
 
 void SimaActors_InitPlayer(u8 floor)
@@ -436,7 +480,12 @@ void SimaActors_InitPlayer(u8 floor)
     sPlayerFloor = floor;
     sPlayerX = (s16)spawnX * SIMA_TILE_PX;
     sPlayerY = (s16)spawnY * SIMA_TILE_PX;
-    sPlayerFacing = SIMA_FACING_DOWN;
+    // NÚMERO DE GUSTO: con vista de perfil pura, sPlayerFacing solo puede
+    // ser LEFT/RIGHT (ver el comentario de cabecera del archivo) -- DOWN ya
+    // no es un valor válido para el sprite. RIGHT como mirada inicial es
+    // arbitrario (no hay una "cara" canónica en una sala vista de perfil);
+    // ajustar aquí si un piso concreto pide entrar mirando al otro lado.
+    sPlayerFacing = SIMA_FACING_RIGHT;
     sPlayerMoving = FALSE;
     sPlayerAnimStep = 0;
     sPlayerAnimTimer = 0;
@@ -490,7 +539,7 @@ void SimaActors_WarpToFloor(u8 floor)
     sPlayerFloor = floor;
     sPlayerX = (s16)spawnX * SIMA_TILE_PX;
     sPlayerY = (s16)spawnY * SIMA_TILE_PX;
-    sPlayerFacing = SIMA_FACING_DOWN;
+    sPlayerFacing = SIMA_FACING_RIGHT;   // mismo valor por defecto que SimaActors_InitPlayer, ver su comentario
     sPlayerMoving = FALSE;
     sPlayerAnimStep = 0;
     sPlayerAnimTimer = 0;
@@ -546,16 +595,32 @@ void SimaActors_UpdatePlayer(void)
     }
 }
 
-// SIMA_TURN_PLAYER_INPUT: lee A (ataque) y D-pad (movimiento). JOY_HELD para
-// el D-pad, no JOY_NEW -- decision deliberada: mantener pulsada una
-// direccion camina turno tras turno a su cadencia natural (cada turno solo
-// avanza cuando el anterior termina del todo, asi que HELD no puede "colar"
-// un segundo paso a mitad de uno ya en marcha), en vez de exigir soltar y
-// volver a pulsar por cada casilla. A si sigue usando JOY_NEW (igual que
-// antes de esta tarea): mantenerlo pulsado no encadena golpes.
+// SIMA_TURN_PLAYER_INPUT: lee A (ataque) y D-pad.
+//
+// ARRIBA/ABAJO usan JOY_HELD, no JOY_NEW -- decision deliberada (de antes de
+// esta tarea): mantener pulsada una direccion camina turno tras turno a su
+// cadencia natural (cada turno solo avanza cuando el anterior termina del
+// todo, asi que HELD no puede "colar" un segundo paso a mitad de uno ya en
+// marcha), en vez de exigir soltar y volver a pulsar por cada casilla.
+//
+// IZQUIERDA/DERECHA (tap-to-turn, tarea de sensación) usan JOY_NEW, NO
+// JOY_HELD -- a proposito, y NO es la misma decision que arriba: con
+// JOY_HELD, el frame en el que el jugador gira (sPlayerFacing cambia) y el
+// frame en el que "ya miraba hacia ahi" son ambos parte del MISMO toque
+// fisico si se mantiene pulsado mas de 1 frame (¡practicamente siempre! un
+// frame a 60Hz dura ~16ms) -- el turno se colaria en un
+// movimiento en el frame inmediatamente siguiente sin que el jugador soltara
+// el boton, y "un toque para girar, sin moverte" (el punto entero de este
+// cambio) dejaria de ser posible en la practica. Con JOY_NEW, cada
+// PULSACION FISICA discreta (soltar y volver a pulsar) es un evento propio:
+// la primera pulsacion en una direccion nueva SOLO gira; hace falta soltar y
+// pulsar de nuevo para que la segunda, ya mirando hacia ahi, mueva.
+//
+// A si sigue usando JOY_NEW (igual que antes de esta tarea): mantenerlo
+// pulsado no encadena golpes.
 static void UpdatePlayerInput(void)
 {
-    u8 newFacing;
+    u8 moveDir;
     s8 curX, curY, nextX, nextY;
 
     if (JOY_NEW(A_BUTTON))
@@ -569,33 +634,56 @@ static void UpdatePlayerInput(void)
     }
 
     if (JOY_HELD(DPAD_UP))
-        newFacing = SIMA_FACING_UP;
+    {
+        moveDir = SIMA_FACING_UP;   // vertical: mueve de inmediato, sPlayerFacing no cambia
+    }
     else if (JOY_HELD(DPAD_DOWN))
-        newFacing = SIMA_FACING_DOWN;
-    else if (JOY_HELD(DPAD_LEFT))
-        newFacing = SIMA_FACING_LEFT;
-    else if (JOY_HELD(DPAD_RIGHT))
-        newFacing = SIMA_FACING_RIGHT;
+    {
+        moveDir = SIMA_FACING_DOWN;
+    }
+    else if (JOY_NEW(DPAD_LEFT))
+    {
+        if (sPlayerFacing != SIMA_FACING_LEFT)
+        {
+            // Primera pulsación física hacia este lado: solo gira, no
+            // consume turno. Ver el comentario de cabecera de esta función
+            // sobre por qué esto necesita JOY_NEW y no JOY_HELD.
+            sPlayerFacing = SIMA_FACING_LEFT;
+            sPlayerMoving = FALSE;
+            UpdatePlayerSprite();
+            return;
+        }
+        moveDir = SIMA_FACING_LEFT;   // ya miraba a la izquierda: esta pulsación mueve
+    }
+    else if (JOY_NEW(DPAD_RIGHT))
+    {
+        if (sPlayerFacing != SIMA_FACING_RIGHT)
+        {
+            sPlayerFacing = SIMA_FACING_RIGHT;
+            sPlayerMoving = FALSE;
+            UpdatePlayerSprite();
+            return;
+        }
+        moveDir = SIMA_FACING_RIGHT;
+    }
     else
     {
-        // Nada pulsado: nadie se mueve (ni siquiera se gira). Es el caso que
-        // demuestra que el turno funciona -- ver la verificacion por
-        // memoria del informe de esta tarea.
+        // Nada pulsado (o LEFT/RIGHT en HELD pero no en el frame de flanco
+        // de subida que exige JOY_NEW): nadie se mueve ni se gira. Es el
+        // caso que demuestra que el turno funciona -- ver la verificacion
+        // por memoria del informe de esta tarea.
         sPlayerMoving = FALSE;
         UpdatePlayerSprite();
         return;
     }
 
-    sPlayerFacing = newFacing;   // girar es gratis, pase lo que pase con el paso (ver mas abajo)
-
     curX = (s8)(sPlayerX / SIMA_TILE_PX);
     curY = (s8)(sPlayerY / SIMA_TILE_PX);
 
-    if (!SimaActors_PlayerStepTarget(sPlayerFloor, curX, curY, newFacing, &nextX, &nextY))
+    if (!SimaActors_PlayerStepTarget(sPlayerFloor, curX, curY, moveDir, &nextX, &nextY))
     {
-        // Casilla bloqueada: el jugador ya se giro (arriba) pero NO arranca
-        // un deslizamiento y sTurnPhase se queda en PLAYER_INPUT -- esto es,
-        // literalmente, "girarse es gratis, no consume turno" del brief.
+        // Casilla bloqueada por un muro: no arranca deslizamiento, el turno
+        // se queda en PLAYER_INPUT (no consume turno -- igual que un giro).
         sPlayerMoving = FALSE;
         UpdatePlayerSprite();
         return;
@@ -720,38 +808,28 @@ static void AdvancePlayerKnockback(void)
 // movimiento actuales, y sincroniza su posición en pantalla con
 // sPlayerX/sPlayerY. Único punto que toca gSprites[sPlayerSpriteId]: todas
 // las fases del turno pasan por aquí para no duplicar la tabla de frames.
+//
+// Vista de perfil pura (tarea de sensación): sPlayerFacing SOLO puede ser
+// SIMA_FACING_LEFT/SIMA_FACING_RIGHT ahora (ver el comentario de cabecera
+// del archivo), así que esta función ya no necesita un switch de 4 casos --
+// SIEMPRE usa la fila de perfil (FRAME_SIDE_*), y el único trabajo de
+// "orientación" es el h-flip. Esto es cierto incluso mientras el jugador
+// cruza una casilla en vertical (ARRIBA/ABAJO): UpdatePlayerInput nunca toca
+// sPlayerFacing en ese caso, así que el sprite conserva su última mirada
+// izquierda/derecha.
 static void UpdatePlayerSprite(void)
 {
     struct Sprite *sprite = &gSprites[sPlayerSpriteId];
     u16 frameTile;
-    bool8 hFlip = FALSE;
+    bool8 hFlip = (sPlayerFacing == SIMA_FACING_LEFT);
 
-    // Ciclo de paso de 2 frames (alterna STEP_A/STEP_B, o STEP_A/STEP_C en
-    // el de perfil): suficiente para leerse como caminata sin meter una
-    // máquina de 3 estados. FRAME_SIDE_STEP_B (la pose "de paso" intermedia
-    // de player.png) queda sin usar a propósito -- STEP_A/STEP_C son las dos
-    // zancadas más distintas entre sí, dan más contraste alternando.
-    switch (sPlayerFacing)
-    {
-    case SIMA_FACING_UP:
-        frameTile = !sPlayerMoving ? FRAME_UP_IDLE
-                    : (sPlayerAnimStep ? FRAME_UP_STEP_B : FRAME_UP_STEP_A);
-        break;
-    case SIMA_FACING_LEFT:
-        frameTile = !sPlayerMoving ? FRAME_SIDE_IDLE
-                    : (sPlayerAnimStep ? FRAME_SIDE_STEP_C : FRAME_SIDE_STEP_A);
-        hFlip = TRUE;
-        break;
-    case SIMA_FACING_RIGHT:
-        frameTile = !sPlayerMoving ? FRAME_SIDE_IDLE
-                    : (sPlayerAnimStep ? FRAME_SIDE_STEP_C : FRAME_SIDE_STEP_A);
-        break;
-    case SIMA_FACING_DOWN:
-    default:
-        frameTile = !sPlayerMoving ? FRAME_DOWN_IDLE
-                    : (sPlayerAnimStep ? FRAME_DOWN_STEP_B : FRAME_DOWN_STEP_A);
-        break;
-    }
+    // Ciclo de paso de 2 frames (alterna STEP_A/STEP_C): suficiente para
+    // leerse como caminata sin meter una máquina de 3 estados.
+    // FRAME_SIDE_STEP_B (la pose "de paso" intermedia de player.png) queda
+    // sin usar a propósito -- STEP_A/STEP_C son las dos zancadas más
+    // distintas entre sí, dan más contraste alternando.
+    frameTile = !sPlayerMoving ? FRAME_SIDE_IDLE
+                : (sPlayerAnimStep ? FRAME_SIDE_STEP_C : FRAME_SIDE_STEP_A);
 
     sprite->oam.tileNum = sprite->sheetTileStart + frameTile;
     // Sin sistema de ANIMCMD de por medio (ver el comentario de sTmpl_SimaPlayer),
@@ -777,10 +855,16 @@ static void UpdatePlayerSprite(void)
 // fuente de verdad de la fase del golpe: UpdateEnemies solo LEE su valor a
 // través de AttackHitboxActive, nunca lo toca. Al terminar (recuperación
 // cumplida), el golpe consume el turno: le toca a los enemigos.
+//
+// Tarea de sensación: sAttackFacing ya SOLO puede ser LEFT/RIGHT (copia de
+// sPlayerFacing, ver la cabecera del archivo), así que esta función ya NO
+// decide el eje del arco -- siempre usa el par horizontal
+// (FRAME_WEAPON_HORIZ_A/B). El par vertical (FRAME_WEAPON_VERT_A/B) queda
+// sin usar, ver el comentario grande sobre WEAPON_SHEET_FRAMES.
 static void UpdateAttack(void)
 {
     s16 hitX, hitY;
-    bool8 vertical, vFlip, hFlip;
+    bool8 hFlip;
 
     if (!sWeaponActive)
     {
@@ -801,22 +885,18 @@ static void UpdateAttack(void)
     gSprites[sWeaponSpriteId].x = hitX + 8;
     gSprites[sWeaponSpriteId].y = hitY + 8;
 
-    // Orientación: primero el EJE (vertical para arriba/abajo, horizontal
-    // para izquierda/derecha) decide qué PAR de frames usar; el flip de OAM
-    // decide cuál de las dos direcciones de ese eje. Ver el comentario
-    // grande sobre WEAPON_SHEET_FRAMES para el porqué de cada flip (masa de
-    // píxeles del arco hacia el borde de la casilla más lejano al jugador).
-    vertical = (sAttackFacing == SIMA_FACING_UP) || (sAttackFacing == SIMA_FACING_DOWN);
-    vFlip = (sAttackFacing == SIMA_FACING_UP);     // arco vertical: masa nativa abajo -> voltear para ARRIBA
-    hFlip = (sAttackFacing == SIMA_FACING_LEFT);   // arco horizontal: masa nativa a la derecha -> voltear para IZQUIERDA
-    gSprites[sWeaponSpriteId].oam.matrixNum = (hFlip ? ST_OAM_HFLIP : 0) | (vFlip ? ST_OAM_VFLIP : 0);
+    // Orientación: un solo flip de OAM (masa nativa del arco a la derecha --
+    // ver el comentario grande sobre WEAPON_SHEET_FRAMES -- se voltea para
+    // IZQUIERDA). Ya no hace falta decidir el eje: siempre es horizontal.
+    hFlip = (sAttackFacing == SIMA_FACING_LEFT);
+    gSprites[sWeaponSpriteId].oam.matrixNum = hFlip ? ST_OAM_HFLIP : 0;
 
     if (sAttackTimer <= ATTACK_WINDUP_FRAMES)
     {
         // Windup: el arma ya se ve (telégrafo del golpe) pero todavía no daña.
         gSprites[sWeaponSpriteId].invisible = FALSE;
         gSprites[sWeaponSpriteId].oam.tileNum = gSprites[sWeaponSpriteId].sheetTileStart
-            + (vertical ? FRAME_WEAPON_VERT_A : FRAME_WEAPON_HORIZ_A);
+            + FRAME_WEAPON_HORIZ_A;
     }
     else if (sAttackTimer <= ATTACK_WINDUP_FRAMES + ATTACK_ACTIVE_FRAMES)
     {
@@ -825,7 +905,7 @@ static void UpdateAttack(void)
         // ventana -- ver la comprobación exacta ahí, es el mismo rango.
         gSprites[sWeaponSpriteId].invisible = FALSE;
         gSprites[sWeaponSpriteId].oam.tileNum = gSprites[sWeaponSpriteId].sheetTileStart
-            + (vertical ? FRAME_WEAPON_VERT_B : FRAME_WEAPON_HORIZ_B);
+            + FRAME_WEAPON_HORIZ_B;
     }
     else
     {
@@ -845,9 +925,10 @@ static void UpdateAttack(void)
 
 // Función pura (Tarea 7): ¿está la caja de golpe del arma activa AHORA
 // MISMO? Envuelve el mismo rango de sAttackTimer que UpdateAttack usa para
-// elegir el frame de impacto (FRAME_WEAPON_VERT_B/FRAME_WEAPON_HORIZ_B),
-// para que ambas lecturas de "¿está golpeando?"
-// nunca se puedan desincronizar (una sola definición de la ventana activa).
+// elegir el frame de impacto (FRAME_WEAPON_HORIZ_B, el único par que se usa
+// desde la vista de perfil pura), para que ambas lecturas de "¿está
+// golpeando?" nunca se puedan desincronizar (una sola definición de la
+// ventana activa).
 // No pura respecto al reloj de la partida (lee sAttackTimer, estado), pero
 // no depende de sprites ni de ningún enemigo -- SimaActors_UpdateEnemies la
 // usa antes de comprobar la caja contra cada enemigo.
@@ -959,6 +1040,13 @@ static const struct SpriteTemplate *const sEnemyTemplates[SIMA_ENEMY_KIND_COUNT]
 #define SIMA_ENEMY_ANIM_PERIOD   16   // frames entre los dos frames de "respirar" (cosmético, no ligado al turno)
 #define SIMA_ENEMY_CONTACT_DAMAGE 1
 
+// SIMA_ENEMY_DETECT_RANGE vive en include/sima.h (NÚMERO DE GUSTO, afinable
+// jugando) -- publica porque SimaActors_EnemyShouldChase, que la usa, esta
+// expuesta al harness in-ROM. Mas alla de ese rango un enemigo deambula
+// (EnemyWanderStep, mas abajo) en vez de perseguir optimamente turno tras
+// turno -- el dueño lo pidio porque la persecucion optima siempre se sentia
+// "demasiado lista, siempre pegada".
+
 // Tarea 7: un enemigo muere de UN golpe -- no hay vida propia por enemigo.
 // Encaja con la regla del proyecto de "sin grinding" (CLAUDE.md): un sistema
 // de aguante por enemigo solo tendría sentido si hubiera algo que farmear
@@ -1057,6 +1145,63 @@ void SimaActors_EnemyStepTarget(u8 floor, s8 ex, s8 ey, s8 px, s8 py, s8 *outX, 
         *outX = ex + stepX;
 }
 
+// Función pura (rango de detección, tarea de sensación): ¿debería un enemigo
+// a `manhattanDist` casillas del jugador PERSEGUIRLO este turno (TRUE,
+// SimaActors_EnemyStepTarget de arriba) o DEAMBULAR (FALSE, EnemyWanderStep
+// más abajo)? Deliberadamente separada del RNG que decide HACIA DÓNDE
+// deambula -- esta función es pura y determinista (misma distancia, mismo
+// resultado siempre), así que el harness in-ROM la puede ejercitar sin
+// depender de una semilla concreta, igual que SimaActors_EnemyStepTarget.
+// Quien llama (StartEnemyTurn, más abajo) calcula la distancia Manhattan
+// real entre el enemigo y el jugador antes de preguntar.
+bool8 SimaActors_EnemyShouldChase(u8 manhattanDist)
+{
+    return manhattanDist <= SIMA_ENEMY_DETECT_RANGE;
+}
+
+// Deambular (tarea de sensación): un paso a una casilla adyacente NO sólida
+// elegida al azar, o quieto si las 4 están bloqueadas. A diferencia de
+// SimaActors_EnemyStepTarget/EnemyShouldChase, esta función SÍ usa el RNG
+// del juego (Random(), include/random.h) -- por eso se queda sin exponer en
+// sima.h ni se testea en el harness in-ROM (no hay semilla determinista que
+// comprobar ahí; lo que SÍ es determinista y se testea es la decisión
+// perseguir-vs-deambular de arriba). Recorre las 4 direcciones cardinales,
+// junta las que son transitables, y usa Random() % count para elegir entre
+// ellas con la misma probabilidad -- no hace falta conocer el número de
+// candidatas de antemano.
+static void EnemyWanderStep(u8 floor, s8 ex, s8 ey, s8 *outX, s8 *outY)
+{
+    static const s8 sWanderDx[4] = {0, 0, -1, 1};
+    static const s8 sWanderDy[4] = {-1, 1, 0, 0};
+    s8 candX[4], candY[4];
+    u8 count = 0, i;
+
+    for (i = 0; i < 4; i++)
+    {
+        s8 nx = ex + sWanderDx[i];
+        s8 ny = ey + sWanderDy[i];
+        if (!SimaRoom_IsSolid(floor, nx, ny))
+        {
+            candX[count] = nx;
+            candY[count] = ny;
+            count++;
+        }
+    }
+
+    if (count == 0)
+    {
+        // Las 4 casillas vecinas están bloqueadas: se queda quieto, igual
+        // que SimaActors_EnemyStepTarget cuando los dos ejes lo están.
+        *outX = ex;
+        *outY = ey;
+        return;
+    }
+
+    i = Random() % count;
+    *outX = candX[i];
+    *outY = candY[i];
+}
+
 // Coloca los enemigos del piso leyendo SimaRoom_GetEnemy. Sin guarda de
 // idempotencia para LoadSpriteSheet (a diferencia de lo que advierte la
 // nota de cabecera de este archivo sobre cargas dobles): igual que
@@ -1119,11 +1264,16 @@ void SimaActors_InitEnemies(u8 floor)
 
 // Arranca el turno de los enemigos: llamada UNA vez, en el frame exacto en
 // que termina el paso o el golpe del jugador (ver UpdatePlayerSlide/UpdateAttack).
-// Para cada enemigo vivo (ni muerto ni en pleno cadáver) calcula su casilla
-// de destino con SimaActors_EnemyStepTarget y decide:
+// Para cada enemigo vivo (ni muerto ni en pleno cadáver) calcula la
+// distancia Manhattan al jugador y, con SimaActors_EnemyShouldChase, decide
+// si este turno persigue (SimaActors_EnemyStepTarget, la persecución óptima
+// de siempre) o deambula (EnemyWanderStep, un paso aleatorio -- tarea de
+// sensación: "demasiado listo, siempre pegado"). Con la casilla de destino
+// ya elegida (por el camino que sea), la decisión de qué HACER con ella es
+// la misma de antes:
 //   - destino == casilla del jugador  -> ataque: no se mueve, daña (una vez
 //     por turno, sPlayerHitThisTurn) y empuja al jugador (StartPlayerKnockback).
-//   - destino == su propia casilla    -> bloqueado en ambos ejes, se queda quieto.
+//   - destino == su propia casilla    -> bloqueado (o deambulando quieto), se queda.
 //   - cualquier otro destino          -> movimiento real: arranca su deslizamiento.
 static void StartEnemyTurn(void)
 {
@@ -1137,6 +1287,8 @@ static void StartEnemyTurn(void)
     for (i = 0; i < SIMA_MAX_ENEMIES; i++)
     {
         s8 ex, ey, nx, ny;
+        s8 dx, dy;
+        u8 dist;
 
         sEnemyMoving[i] = FALSE;
 
@@ -1145,7 +1297,15 @@ static void StartEnemyTurn(void)
 
         ex = (s8)(sEnemyX[i] / SIMA_TILE_PX);
         ey = (s8)(sEnemyY[i] / SIMA_TILE_PX);
-        SimaActors_EnemyStepTarget(sEnemyFloor, ex, ey, px, py, &nx, &ny);
+
+        dx = px - ex;
+        dy = py - ey;
+        dist = (u8)((dx < 0 ? -dx : dx) + (dy < 0 ? -dy : dy));   // distancia Manhattan, en casillas
+
+        if (SimaActors_EnemyShouldChase(dist))
+            SimaActors_EnemyStepTarget(sEnemyFloor, ex, ey, px, py, &nx, &ny);
+        else
+            EnemyWanderStep(sEnemyFloor, ex, ey, &nx, &ny);
 
         if (nx == px && ny == py)
         {
