@@ -16,11 +16,26 @@ PHANTOM_TEST ?= 0
 # OBJ_DIR/ROM (ver PHANTOM_SUFFIX más abajo). Mutuamente excluyente con
 # PHANTOM_TEST (test tiene prioridad si ambos se pasaran).
 PHANTOM_DEBUG_BOOT ?= 0
-# Guard: no combinar variantes — compilarían ambos -D y el ROM "test" llevaría
-# también el arranque directo (o viceversa). El sufijo ya prioriza test, pero
-# los -D son independientes; aquí cerramos el footgun explícitamente.
+# Build de debug: arranca directo en CB2_InitSima (bypassa título + menú +
+# camarote) para poder desarrollar/testear el dungeon crawler SIMA del
+# prólogo sin tener que jugar el front-end a mano en cada iteración — ese
+# front-end no se puede pulsar desde el harness headless. Mismo motivo que
+# PHANTOM_TEST/PHANTOM_DEBUG_BOOT para declararlo temprano: deriva su propio
+# OBJ_DIR/ROM (ver PHANTOM_SUFFIX más abajo). Mutuamente excluyente con
+# PHANTOM_TEST y PHANTOM_DEBUG_BOOT.
+PHANTOM_DEBUG_SIMA ?= 0
+# Guard: no combinar variantes — compilarían varios -D a la vez y el ROM de
+# una variante llevaría también el arranque/harness de otra. El sufijo ya
+# prioriza test > debug_boot > debug_sima, pero los -D son independientes;
+# aquí cerramos el footgun explícitamente para cada par posible.
 ifeq ($(PHANTOM_TEST)$(PHANTOM_DEBUG_BOOT),11)
   $(error PHANTOM_TEST y PHANTOM_DEBUG_BOOT son mutuamente excluyentes; pasa solo uno)
+endif
+ifeq ($(PHANTOM_TEST)$(PHANTOM_DEBUG_SIMA),11)
+  $(error PHANTOM_TEST y PHANTOM_DEBUG_SIMA son mutuamente excluyentes; pasa solo uno)
+endif
+ifeq ($(PHANTOM_DEBUG_BOOT)$(PHANTOM_DEBUG_SIMA),11)
+  $(error PHANTOM_DEBUG_BOOT y PHANTOM_DEBUG_SIMA son mutuamente excluyentes; pasa solo uno)
 endif
 
 # `File name`.gba ('_modern' will be appended to the modern builds)
@@ -94,14 +109,18 @@ OBJ_DIR_NAME := $(BUILD_DIR)/emerald
 # PHANTOM_DEBUG_BOOT=1 modern` y `make modern` escribirían el mismo
 # pokeemerald_modern.gba, y tras un smoke run el .gba en disco quedaría siendo
 # el de la variante (con el harness/svc de halt, o el arranque directo a New
-# Game) hasta el próximo build de release — footgun de seguridad para release.
-# MODERN_ELF_NAME/MODERN_MAP_NAME se derivan de MODERN_ROM_NAME más abajo, así
-# que siguen el sufijo automáticamente. Las variantes son mutuamente
-# excluyentes; test tiene prioridad si ambas se pasaran.
+# Game/SIMA) hasta el próximo build de release — footgun de seguridad para
+# release. MODERN_ELF_NAME/MODERN_MAP_NAME se derivan de MODERN_ROM_NAME más
+# abajo, así que siguen el sufijo automáticamente. Las variantes son
+# mutuamente excluyentes (ver guard más arriba); si se combinaran igual,
+# aquí test tiene prioridad sobre debug_boot, que a su vez tiene prioridad
+# sobre debug_sima.
 ifeq ($(PHANTOM_TEST),1)
   PHANTOM_SUFFIX := _test
 else ifeq ($(PHANTOM_DEBUG_BOOT),1)
   PHANTOM_SUFFIX := _debug
+else ifeq ($(PHANTOM_DEBUG_SIMA),1)
+  PHANTOM_SUFFIX := _sima
 else
   PHANTOM_SUFFIX :=
 endif
@@ -162,6 +181,15 @@ endif
 PHANTOM_DEBUG_BOOT ?= 0
 ifeq ($(PHANTOM_DEBUG_BOOT),1)
   CPPFLAGS += -DPHANTOM_DEBUG_BOOT
+endif
+
+# Build de debug: rutea el arranque directo a CB2_InitSima (ver src/intro.c),
+# saltando título + menú + camarote, para poder desarrollar/testear el
+# dungeon crawler SIMA sin depender de inputs que el harness headless no
+# puede inyectar. Andamiaje de desarrollo puro: no afecta la release.
+PHANTOM_DEBUG_SIMA ?= 0
+ifeq ($(PHANTOM_DEBUG_SIMA),1)
+  CPPFLAGS += -DPHANTOM_DEBUG_SIMA
 endif
 
 ifeq ($(MODERN),0)

@@ -25,6 +25,7 @@
 #include "constants/rgb.h"
 #include "constants/battle_anim.h"
 #include "overworld.h" // CB2_NewGame, usado bajo PHANTOM_DEBUG_BOOT
+#include "sima.h" // CB2_InitSima, usado bajo PHANTOM_DEBUG_SIMA
 
 /*
     The intro is grouped into the following scenes
@@ -72,6 +73,8 @@ static void MainCB2_EndIntro(void)
     {
 #ifdef PHANTOM_DEBUG_BOOT
         SetMainCallback2(CB2_NewGame); // debug: salta título+minijuego, entra directo al juego
+#elif defined(PHANTOM_DEBUG_SIMA)
+        SetMainCallback2(CB2_InitSima); // debug: salta título+menú+camarote, entra directo a SIMA
 #else
         SetMainCallback2(CB2_InitTitleScreen);
 #endif
@@ -143,6 +146,15 @@ static u8 SetUpCopyrightScreen(void)
         // Build de debug: salta título+minijuego, entra directo al juego (save
         // blocks + heap ya los inicializó CB2_InitCopyrightScreenAfterBootup).
         SetMainCallback2(CB2_NewGame);
+#elif defined(PHANTOM_DEBUG_SIMA)
+        // Build de debug: salta título+menú+camarote, entra directo a SIMA
+        // (save blocks + heap ya los inicializó
+        // CB2_InitCopyrightScreenAfterBootup, igual que en PHANTOM_DEBUG_BOOT
+        // — SIMA los necesita tanto como el overworld normal). Andamiaje de
+        // desarrollo puro para poder probar el dungeon crawler del prólogo
+        // sin pulsar título → menú → narración del camarote a mano; revertir
+        // quitando esta rama (o compilando sin PHANTOM_DEBUG_SIMA=1).
+        SetMainCallback2(CB2_InitSima);
 #else
         SetMainCallback2(CB2_InitTitleScreen);
 #endif

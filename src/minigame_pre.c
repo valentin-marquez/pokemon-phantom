@@ -23,7 +23,7 @@
 #include "constants/rgb.h"
 #include "constants/songs.h"
 #include "constants/characters.h"
-#include "minigame_spaceship.h"
+#include "sima.h"
 #include "minigame_pre.h"
 #include <string.h>
 
@@ -320,8 +320,8 @@ static void Task_HandlePreStorySequence(u8 taskId)
 
 static void Task_TransitionToMainGame(u8 taskId)
 {
-    // Transición directa al minijuego principal
-    SetMainCallback2(CB2_InitMinigameSpaceship);
+    // Transición directa a SIMA, el dungeon crawler de la consola de Carlos.
+    SetMainCallback2(CB2_InitSima);
     DestroyTask(taskId);
 }
 
