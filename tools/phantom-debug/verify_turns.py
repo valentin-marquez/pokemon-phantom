@@ -23,9 +23,9 @@ BOOT_FRAMES = 320  # copyright + fundido + sala montada (igual que play_sima.py)
 # Direcciones IWRAM (arm-none-eabi-nm pokeemerald_modern_sima.elf | grep sPlayer/sEnemy):
 ADDR_PLAYER_X = 0x03000eac   # s16
 ADDR_PLAYER_Y = 0x03000eae   # s16
-ADDR_TURN_PHASE = 0x03000eb6  # u8: 0=PLAYER_INPUT 1=PLAYER_MOVE 2=PLAYER_ATTACK 3=ENEMY_STEP
-ADDR_ENEMY_X = 0x03000edc    # s16[3]
-ADDR_ENEMY_Y = 0x03000ee4    # s16[3]
+ADDR_TURN_PHASE = 0x03000eba  # u8: 0=PLAYER_INPUT 1=PLAYER_MOVE 2=PLAYER_ATTACK 3=ENEMY_STEP 4=PLAYER_DEAD 5=PLAYER_TELEPORT
+ADDR_ENEMY_X = 0x03000ee0    # s16[3]
+ADDR_ENEMY_Y = 0x03000ee8    # s16[3]
 
 
 def s16(v):

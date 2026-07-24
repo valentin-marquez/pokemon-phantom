@@ -300,19 +300,21 @@ $(FONTGFXDIR)/frlg_female.fwjpnfont: $(FONTGFXDIR)/japanese_frlg_female.png
 
 ### SIMA ###
 
-# player_walk.png (graphics/sima/gen.py) es una tira de celdas de 16x16 para
-# un OBJ (sprite del jugador, Tarea 4), no un BG: cada celda necesita sus 4
-# tiles de hardware contiguos, así que -mwidth/-mheight reordena el barrido
-# raster de gbagfx (mismo mecanismo que graphics/object_events/pics/*
-# en spritesheet_rules.mk para sus sprites de 16x32). tiles.4bpp (Tarea 3)
-# es BG y no necesita esto: PlaceCell en src/sima.c hace su propio barrido.
-graphics/sima/player_walk.4bpp: %.4bpp: %.png
+# player_anim.png (graphics/sima/gen.py, generate_player_anim) es una tira de
+# 21 celdas de 16x16 para un OBJ (sprite del jugador: idle/move/damage/dead/
+# teleport, tarea de animacion -- sustituye a player_walk.png), no un BG:
+# cada celda necesita sus 4 tiles de hardware contiguos, así que
+# -mwidth/-mheight reordena el barrido raster de gbagfx (mismo mecanismo que
+# graphics/object_events/pics/* en spritesheet_rules.mk para sus sprites de
+# 16x32). tiles.4bpp (Tarea 3) es BG y no necesita esto: PlaceCell en
+# src/sima.c hace su propio barrido.
+graphics/sima/player_anim.4bpp: %.4bpp: %.png
 	$(GFX) $< $@ -mwidth 2 -mheight 2
 
 # rat.png/bat.png/slime.png (Tarea 6) son hojas de enemigo de 4x6 celdas de
 # 16x16 (64x96 px) ya reindexadas por graphics/sima/gen.py, sin recortar (a
-# diferencia de player_walk.png): src/sima_actors.c usa toda la hoja como un
-# OBJ, así que necesitan el mismo -mwidth/-mheight que player_walk.4bpp para
+# diferencia de player_anim.png): src/sima_actors.c usa toda la hoja como un
+# OBJ, así que necesitan el mismo -mwidth/-mheight que player_anim.4bpp para
 # que cada celda de 16x16 quede como 4 tiles de hardware contiguos.
 graphics/sima/rat.4bpp: %.4bpp: %.png
 	$(GFX) $< $@ -mwidth 2 -mheight 2
@@ -325,7 +327,7 @@ graphics/sima/slime.4bpp: %.4bpp: %.png
 
 # weapon.png (Tarea 7): dos frames de 16x16 del mandoble del jugador
 # recortados de weapons.png (graphics/sima/gen.py, generate_weapon), mismo
-# formato OBJ que player_walk.4bpp/rat.4bpp de arriba.
+# formato OBJ que player_anim.4bpp/rat.4bpp de arriba.
 graphics/sima/weapon.4bpp: %.4bpp: %.png
 	$(GFX) $< $@ -mwidth 2 -mheight 2
 

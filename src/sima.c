@@ -127,6 +127,16 @@ static u8 sCurrentFloor;
 // caminando a oscuras), FADE_IN mientras el piso ya cambiado vuelve a
 // aparecer. SIMA_TRANS_NONE vale 0, igual que sCurrentFloor arranca en 0 sin
 // inicializador explicito.
+//
+// Tarea de animacion: el MISMO par FADE_OUT/FADE_IN se reutiliza ahora para
+// DOS fundidos distintos -- el de "bajar la escalera" (de siempre) y el
+// nuevo de "morir" (ver CheckPlayerDeath/SimaActors_ResetAfterDeath) -- en
+// vez de duplicar la maquina de estados entera para algo que solo difiere en
+// QUE PASA cuando la pantalla ya esta en negro. sTransitionIsDeath es esa
+// unica diferencia: TRUE si el fundido en marcha es el de la ruta de muerte.
+// Se fija justo antes de entrar en FADE_OUT (CheckStairs/CheckTeleportDone
+// ponen FALSE, CheckPlayerDeath pone TRUE) y UpdateFloorTransition la lee
+// una sola vez, con la pantalla ya negra, para decidir la rama.
 enum SimaTransitionState
 {
     SIMA_TRANS_NONE,
@@ -135,6 +145,7 @@ enum SimaTransitionState
 };
 
 static u8 sTransitionState;
+static bool8 sTransitionIsDeath;
 
 // Tarea 6: si la escalera del piso actual YA está pintada como tal en BG0
 // (frente a tapada como suelo llano mientras queden enemigos vivos).
@@ -161,11 +172,13 @@ static void VBlankCB_Sima(void)
     TransferPlttBuffer();
 }
 
-// Si el jugador esta sobre una escalera y no hay ya un fundido en marcha,
-// arranca el cambio de piso fundiendo a negro. BeginNormalPaletteFade no
-// encola si gPaletteFade.active ya esta activo (ver la nota de
-// minigame_pre.c) -- de ahi el gate explicito, aunque aqui ademas evita
-// relanzar el fundido cada frame mientras dura.
+// Si el jugador esta sobre una escalera desbloqueada y todavia no esta
+// desvaneciendose, arranca la animacion de "encogerse y desaparecer" (tarea
+// de animacion) -- YA NO funde a negro directamente, eso lo dispara
+// CheckTeleportDone (mas abajo) cuando esa animacion termine.
+// SimaActors_IsPlayerIdle() vuelve a FALSE en el mismo frame en que
+// SimaActors_StartTeleport cambia sTurnPhase, asi que no hace falta un gate
+// aparte contra relanzar la animacion mientras dura.
 static void CheckStairs(void)
 {
     s8 x, y;
@@ -182,19 +195,53 @@ static void CheckStairs(void)
     // los enemigos del piso muertos). SimaRoom_IsStairs por sí sola ya no
     // basta -- es geometría de sala, no si la escalera funciona todavía.
     if (SimaRoom_IsStairs(sCurrentFloor, x, y)
-        && SimaActors_StairsUnlocked(SimaActors_GetAliveEnemyCount())
-        && !gPaletteFade.active)
+        && SimaActors_StairsUnlocked(SimaActors_GetAliveEnemyCount()))
+    {
+        SimaActors_StartTeleport();
+    }
+}
+
+// Tarea de animacion: dispara el fundido de cambio de piso de verdad, una
+// vez que la animacion de "encogerse y desaparecer" (arrancada por
+// CheckStairs, arriba) ya terminó. Mismo gate contra fundidos ya activos que
+// el resto de disparadores de esta maquina de estados (BeginNormalPaletteFade
+// no encola, ver la nota de minigame_pre.c).
+static void CheckTeleportDone(void)
+{
+    if (SimaActors_IsTeleportAnimDone() && !gPaletteFade.active)
     {
         BeginNormalPaletteFade(PALETTES_ALL, 0, 0, 16, RGB_BLACK);
+        sTransitionIsDeath = FALSE;
         sTransitionState = SIMA_TRANS_FADE_OUT;
     }
 }
 
-// Avanza la maquina de estados del cambio de piso. Con la pantalla ya en
-// negro (fin del fundido de salida) es el momento de repintar BG0 y
-// recolocar al jugador SIN que se vea: SimaActors_WarpToFloor, no
-// SimaActors_InitPlayer, porque el sprite ya existe (ver la nota de
-// idempotencia en sima.h).
+// Tarea de animacion: dispara el fundido de la ruta de muerte, una vez que
+// la animacion de muerte (arrancada dentro de src/sima_actors.c, StartEnemyTurn,
+// al llegar la vida a 0) ya terminó. Mismo mecanismo que CheckTeleportDone,
+// pero marcando sTransitionIsDeath = TRUE para que UpdateFloorTransition
+// tome la otra rama al llegar la pantalla a negro.
+static void CheckPlayerDeath(void)
+{
+    if (SimaActors_IsDeathAnimDone() && !gPaletteFade.active)
+    {
+        BeginNormalPaletteFade(PALETTES_ALL, 0, 0, 16, RGB_BLACK);
+        sTransitionIsDeath = TRUE;
+        sTransitionState = SIMA_TRANS_FADE_OUT;
+    }
+}
+
+// Avanza la maquina de estados del cambio de piso/muerte. Con la pantalla ya
+// en negro (fin del fundido de salida) es el momento de repintar BG0 y
+// recolocar al jugador SIN que se vea -- QUE recolocacion toca depende de
+// sTransitionIsDeath (ver su comentario, junto a la declaracion):
+//   - escalera (FALSE): SimaActors_WarpToFloor al piso SIGUIENTE (de
+//     siempre) -- no SimaActors_InitPlayer, porque el sprite ya existe (ver
+//     la nota de idempotencia en sima.h).
+//   - muerte (TRUE): SimaActors_ResetAfterDeath en el MISMO piso -- ver el
+//     GANCHO grande junto a esa funcion en src/sima_actors.c, este es su
+//     otro extremo (el punto de llamada que habria que cambiar el dia que
+//     exista el marcador del hermano).
 static void UpdateFloorTransition(void)
 {
     switch (sTransitionState)
@@ -202,10 +249,26 @@ static void UpdateFloorTransition(void)
     case SIMA_TRANS_FADE_OUT:
         if (!gPaletteFade.active)
         {
-            sCurrentFloor = SimaRoom_NextFloor(sCurrentFloor);
+            if (sTransitionIsDeath)
+            {
+                // --- GANCHO: fin del prologo (pendiente). Ver el
+                // comentario grande junto a SimaActors_ResetAfterDeath en
+                // src/sima_actors.c -- ese es el sitio con el contexto
+                // completo de por que esto reinicia el piso hoy y que
+                // deberia pasar aqui en su lugar.
+                SimaActors_ResetAfterDeath(sCurrentFloor);
+            }
+            else
+            {
+                sCurrentFloor = SimaRoom_NextFloor(sCurrentFloor);
+                SimaActors_WarpToFloor(sCurrentFloor);
+            }
+            // Repintar la sala hace falta en AMBOS casos: al cambiar de piso
+            // (arte distinto) y al morir (los enemigos vuelven a estar
+            // todos vivos, asi que la escalera debe volver a taparse -- ver
+            // DrawRoom/SimaActors_StairsUnlocked).
             DrawRoom(sCurrentFloor);
             CopyBgTilemapBufferToVram(0);
-            SimaActors_WarpToFloor(sCurrentFloor);
 
             BeginNormalPaletteFade(PALETTES_ALL, 0, 16, 0, RGB_BLACK);
             sTransitionState = SIMA_TRANS_FADE_IN;
@@ -229,6 +292,13 @@ static void CB2_SimaMain(void)
         SimaActors_UpdateEnemies();
         UpdateStairsVisibility();
         CheckStairs();
+        // Tarea de animacion: los dos disparadores nuevos del fundido
+        // (teleport de escalera / muerte) -- ambos no-op la inmensa mayoria
+        // de los frames (solo actuan cuando su animacion respectiva ya
+        // terminó), igual que CheckStairs ya era no-op salvo el frame exacto
+        // en que se pisa la escalera.
+        CheckTeleportDone();
+        CheckPlayerDeath();
     }
     else
     {
@@ -439,6 +509,7 @@ void CB2_InitSima(void)
         // marcha.
         sCurrentFloor = 0;
         sTransitionState = SIMA_TRANS_NONE;
+        sTransitionIsDeath = FALSE;
         sHudDrawnHP = 0xFF;   // fuerza el primer pintado del HUD (ver DrawHud)
 
         // Los enemigos tienen que existir ANTES de pintar la sala:

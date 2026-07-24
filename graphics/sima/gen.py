@@ -30,11 +30,16 @@ COLORS = [
 LUT = {rgb: i + 1 for i, rgb in enumerate(COLORS)}
 
 # (ruta relativa dentro del dir de packs) -> nombre de salida
+#
+# "elf.png" (la hoja grande de la que antes se recortaban a ojo los frames
+# del jugador) YA NO esta aqui: el dueño del proyecto separo y nombro los
+# frames de verdad (ver PLAYER_ANIM_SOURCES, mas abajo) precisamente para que
+# el pipeline deje de adivinar posiciones sobre esa hoja. Si "elf.png" hiciera
+# falta para algo mas en el futuro, hay que volver a añadirla aqui.
 ASSETS = {
     "SGQ_Dungeon/grounds_and_walls/grounds.png": "grounds",
     "SGQ_Dungeon/grounds_and_walls/walls.png": "walls",
     "SGQ_Dungeon/props/props.png": "props",
-    "SGQ_Dungeon/characters/main/elf.png": "player",
     "SGQ_Dungeon/characters/enemies/rat.png": "rat",
     "SGQ_Dungeon/characters/enemies/bat.png": "bat",
     "SGQ_Dungeon/characters/enemies/slime.png": "slime",
@@ -44,9 +49,25 @@ ASSETS = {
 }
 
 
-def convert(src_path, out_name):
+def reindex(src_path, expected_size=None):
+    """Reindexa una imagen RGBA contra la LUT fija de SIMA (paleta de 4
+    colores + transparente, ver cabecera del archivo), devolviendo una
+    imagen 'P' ya paletizada -- SIN grabarla a fichero (eso lo hace quien
+    llama: convert(), para las hojas de origen completas; generate_player_anim(),
+    para los frames nombrados que se concatenan antes de grabar). Aborta ante
+    cualquier color fuera de la paleta o alfa parcial: preferible romper el
+    build a colar un color aproximado en silencio.
+
+    expected_size, si se da, fuerza (w, h) exactos -- para los ficheros de
+    frames nombrados de PLAYER_ANIM_SOURCES, donde un ancho que no sea
+    16*n_frames significa que el fichero de origen ya no trae el numero de
+    frames que el codigo espera (mejor abortar que colar un frame de mas o
+    de menos sin que nadie se entere)."""
     im = Image.open(src_path).convert("RGBA")
     w, h = im.size
+    if expected_size is not None and (w, h) != expected_size:
+        sys.exit(f"ERROR: {src_path} mide {w}x{h}, se esperaba "
+                  f"{expected_size[0]}x{expected_size[1]}")
     if w % 8 or h % 8:
         sys.exit(f"ERROR: {src_path} mide {w}x{h}; ambos lados deben ser multiplo de 8")
 
@@ -74,8 +95,13 @@ def convert(src_path, out_name):
                          "que no esta en la paleta de SIMA")
             dst[x, y] = idx
 
+    return out
+
+
+def convert(src_path, out_name):
+    out = reindex(src_path)
     out.save(os.path.join(OUT, out_name + ".png"))
-    print(f"{out_name}.png  ({w}x{h})")
+    print(f"{out_name}.png  ({out.width}x{out.height})")
 
 
 # Celdas de 16x16 que usa de verdad el crawler de SIMA (Tarea 3), recortadas
@@ -151,36 +177,69 @@ def generate_tiles():
     print(f"tiles.png  ({out.width}x{out.height})")
 
 
-# Celdas de caminata que el jugador de la Tarea 4 usa de player.png (filas
-# 0/1/2: abajo, arriba, perfil -- ver el mapa de frames del brief de la
-# Tarea 4). Izquierda reutiliza las celdas de perfil volteadas por OAM
-# (oam.hFlip en src/sima_actors.c), no hace falta arte propio. (fila, col)
-# en celdas de 16x16 de player.png.
-PLAYER_WALK_CELLS = [
-    (0, 0), (0, 1), (0, 2),   # abajo:  quieto, paso A, paso B
-    (1, 0), (1, 1), (1, 2),   # arriba: quieto, paso A, paso B
-    (2, 0), (2, 1), (2, 2), (2, 3),  # perfil: quieto + 3 de ciclo de paso
+# ---------------------------------------------------------------------
+# Animaciones del jugador (Tarea de animacion): el dueño del proyecto separo
+# y nombro los frames a mano -- ANTES de esta tarea se recortaban a ojo de un
+# "elf.png" grande adivinando posiciones (generate_player_walk(), eliminada
+# aqui). Es exactamente el motivo por el que los separo: que el pipeline deje
+# de adivinar.
+#
+# Los 5 ficheros de origen (SGQ_Dungeon/characters/main/, ver PLAYER_ANIM_DIR)
+# son tiras horizontales de celdas de 16x16 MIRANDO A LA DERECHA, todas de 4
+# colores y sin alfa parcial (medido, igual que el resto de hojas de SIMA).
+# Las variantes "-left" NO se cargan: son el espejo EXACTO frame a frame de
+# las "-right" (verificado comparando cada celda de 16x16 por separado -- no
+# la tira entera, que invertiria tambien el ORDEN de los frames -- contra su
+# version "-left": 0 pixeles de diferencia en las 4 hojas que traen ambas
+# variantes). El juego ya voltea por OAM para mirar a la izquierda
+# (sPlayerFacing/hFlip en src/sima_actors.c), asi que cargar tambien la
+# izquierda gastaria el doble de VRAM sin aportar nada nuevo.
+#
+# (fichero, cuantos frames de 16x16 trae, etiqueta para logs/errores). El
+# ORDEN de esta lista es el orden en que generate_player_anim() concatena los
+# frames en player_anim.png -- src/sima_actors.c deriva sus FRAME_*_BASE de
+# este mismo orden (3+4+5+3+6 = 21 frames), no lo cambies sin actualizar alli
+# tambien.
+PLAYER_ANIM_DIR = "SGQ_Dungeon/characters/main"
+PLAYER_ANIM_SOURCES = [
+    ("elf-idle-look-right.png", 3, "idle"),
+    ("elf-move-right.png", 4, "move"),
+    ("elf-take-damage-look-right.png", 5, "damage"),
+    ("elf-dead-look-right.png", 3, "dead"),
+    ("elf-teleport-disapear.png", 6, "teleport"),
 ]
 
 
-def generate_player_walk():
-    """Recorta de player.png (ya reindexado) las 10 celdas de caminata que
-    usa SimaActors (Tarea 4) y las empaqueta en una tira horizontal de
-    160x16. A diferencia de generate_tiles() (que arma un BG, pintado por
-    PlaceCell con barrido raster de la hoja completa), esto es para un OBJ:
-    graphics_file_rules.mk convierte player_walk.png con -mwidth 2 -mheight 2
-    para que cada celda de 16x16 quede como 4 tiles de hardware CONTIGUOS,
-    que es el formato que necesita un sprite SPRITE_SIZE(16x16). Las filas
-    3-8 de player.png (ataque/muerte) quedan fuera: no son de esta tarea."""
-    src_path = os.path.join(OUT, "player.png")
-    src = Image.open(src_path)
-    out = Image.new("P", (16 * len(PLAYER_WALK_CELLS), 16), 0)
-    out.putpalette(src.getpalette())
-    for i, (row, col) in enumerate(PLAYER_WALK_CELLS):
-        cell = src.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
-        out.paste(cell, (i * 16, 0))
-    out.save(os.path.join(OUT, "player_walk.png"))
-    print(f"player_walk.png  ({out.width}x{out.height})")
+def generate_player_anim(root):
+    """Reindexa (reindex(), que aborta ante cualquier color o alfa fuera de
+    la paleta de SIMA, o ante un ancho que no cuadre con el numero de frames
+    esperado) cada fichero de PLAYER_ANIM_SOURCES y los concatena en una
+    unica tira horizontal, en orden: 3+4+5+3+6 = 21 celdas de 16x16 ->
+    336x16. Igual que generate_player_walk() hacia antes, graphics_file_rules.mk
+    convierte player_anim.png con -mwidth 2 -mheight 2 para que cada celda
+    quede en 4 tiles de hardware CONTIGUOS (formato OBJ, SPRITE_SIZE(16x16))."""
+    cells = []
+    for filename, count, label in PLAYER_ANIM_SOURCES:
+        src_path = os.path.join(root, PLAYER_ANIM_DIR, filename)
+        cell = reindex(src_path, expected_size=(16 * count, 16))
+        cells.append(cell)
+        print(f"  {label}: {filename} ({count} frames)")
+
+    total_frames = sum(count for _, count, _ in PLAYER_ANIM_SOURCES)
+    out = Image.new("P", (16 * total_frames, 16), 0)
+    pal = list(TRANSPARENT)
+    for rgb in COLORS:
+        pal += list(rgb)
+    pal += [0, 0, 0] * (16 - 1 - len(COLORS))
+    out.putpalette(pal)   # misma paleta que reindex() usa para cada celda -- pegar es una simple copia de indices
+
+    x = 0
+    for cell in cells:
+        out.paste(cell, (x, 0))
+        x += cell.width
+
+    out.save(os.path.join(OUT, "player_anim.png"))
+    print(f"player_anim.png  ({out.width}x{out.height})")
 
 
 # Corazones del HUD (Tarea 6): igual que generate_tiles() para las celdas de
@@ -241,7 +300,7 @@ WEAPON_ARC_CELLS = [
 def generate_weapon():
     """Recorta las 4 celdas de WEAPON_ARC_CELLS de weapons.png (ya
     reindexado) y las empaqueta en una tira horizontal de 64x16, igual que
-    generate_player_walk(): graphics_file_rules.mk la convierte con -mwidth 2
+    generate_player_anim(): graphics_file_rules.mk la convierte con -mwidth 2
     -mheight 2 para que cada celda de 16x16 quede en 4 tiles de hardware
     contiguos (formato OBJ). weapons.png ya paso por convert() (arriba), que
     aborta ante cualquier color fuera de la paleta de 4 tonos de SIMA -- este
@@ -270,12 +329,15 @@ def generate_weapon():
 def main():
     root = sys.argv[1] if len(sys.argv) > 1 else SRC_DEFAULT
     missing = [p for p in ASSETS if not os.path.exists(os.path.join(root, p))]
+    missing += [os.path.join(PLAYER_ANIM_DIR, filename)
+                for filename, _, _ in PLAYER_ANIM_SOURCES
+                if not os.path.exists(os.path.join(root, PLAYER_ANIM_DIR, filename))]
     if missing:
         sys.exit("ERROR: no encontrados en " + root + ":\n  " + "\n  ".join(missing))
     for rel, name in ASSETS.items():
         convert(os.path.join(root, rel), name)
     generate_tiles()
-    generate_player_walk()
+    generate_player_anim(root)
     generate_hud_hearts()
     generate_weapon()
 

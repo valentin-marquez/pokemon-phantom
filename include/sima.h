@@ -119,6 +119,59 @@ bool8 SimaActors_EnemyShouldChase(u8 manhattanDist);
 // ver el comentario junto a la implementacion en src/sima_actors.c).
 bool8 SimaActors_StairsUnlocked(u8 aliveEnemyCount);
 
+// ---------------------------------------------------------------------
+// Animaciones del jugador (tarea de animacion): frames separados y nombrados
+// por el dueño del proyecto (graphics/sima/gen.py, generate_player_anim) --
+// idle/move/damage/dead/teleport. Las constantes de cadencia viven AQUI (no
+// en src/sima_actors.c, donde vivirian si solo las usara ese archivo) porque
+// las tres funciones puras de mas abajo (expuestas para el harness in-ROM)
+// las necesitan como limites exactos, y porque src/sima_actors.c las usa
+// antes de su propia declaracion si vivieran mas abajo en el .c.
+//
+// Golpe (5 frames, elf-take-damage-look-right.png): SIMA_HIT_INVULN_FRAMES
+// es TANTO la duracion de la animacion COMO la ventana de invulnerabilidad
+// como regla de juego (ver el comentario junto a sPlayerInvulnTimer en
+// src/sima_actors.c sobre por que se fusionaron en esta tarea).
+#define SIMA_DAMAGE_ANIM_PERIOD 4   // frames de juego por frame de animacion
+#define SIMA_HIT_INVULN_FRAMES (5 * SIMA_DAMAGE_ANIM_PERIOD)   // 5 frames de elf-take-damage-look-right.png = 20
+
+// Muerte (3 frames, elf-dead-look-right.png).
+#define SIMA_DEATH_ANIM_PERIOD 6
+#define SIMA_DEATH_ANIM_FRAMES (3 * SIMA_DEATH_ANIM_PERIOD)   // 18
+
+// Teleport/escalera (6 frames, elf-teleport-disapear.png, "se encoge y desaparece").
+#define SIMA_TELEPORT_ANIM_PERIOD 6
+#define SIMA_TELEPORT_ANIM_FRAMES (6 * SIMA_TELEPORT_ANIM_PERIOD)   // 36
+
+// Funciones puras (tarea de animacion): dado el cronometro de estado
+// correspondiente, el indice de frame (0-based, saturado en el ultimo) de la
+// animacion. Ver el comentario junto a su implementacion en
+// src/sima_actors.c sobre el sentido (creciente/decreciente) de cada
+// cronometro. Expuestas para el harness in-ROM, igual que
+// SimaActors_ApplyDamage/PlayerStepTarget.
+u8 SimaActors_DamageAnimFrame(u8 invulnTimer);
+u8 SimaActors_DeathAnimFrame(u8 deathTimer);
+u8 SimaActors_TeleportAnimFrame(u8 teleportTimer);
+
+// Muerte (tarea de animacion): SimaActors_IsPlayerDead (arriba) ya existia
+// pero nadie la llamaba -- StartEnemyTurn (src/sima_actors.c) la comprueba
+// ahora tras aplicar daño y, si la vida llega a 0, entra en
+// SIMA_TURN_PLAYER_DEAD (reproduce la animacion de muerte, sin input ni
+// turno de enemigos). SimaActors_IsDeathAnimDone -- pura respecto al estado,
+// sin tocar sprites -- le dice a src/sima.c (CheckPlayerDeath) el frame
+// exacto en que esa animacion terminó y toca empezar el fundido a negro.
+// SimaActors_ResetAfterDeath es el GANCHO de fin del prologo: ver el
+// comentario grande junto a su implementación en src/sima_actors.c.
+bool8 SimaActors_IsDeathAnimDone(void);
+void SimaActors_ResetAfterDeath(u8 floor);
+
+// Teleport/escalera (tarea de animacion): SimaActors_StartTeleport arranca
+// el "encogerse y desvanecerse" (6 frames) al pisar una escalera
+// desbloqueada -- src/sima.c ya NO funde a negro directamente al pisarla,
+// espera a SimaActors_IsTeleportAnimDone.
+void SimaActors_StartTeleport(void);
+bool8 SimaActors_IsTeleportAnimDone(void);
+
 // Ataque del jugador (Tarea 7). Funcion pura, sin sprites: la casilla de
 // 16x16 (esquina superior izquierda, en pixeles) que el arma amenaza cuando
 // el jugador -- parado en (playerX, playerY) -- ataca mirando `facing`. Es

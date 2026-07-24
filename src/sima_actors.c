@@ -53,26 +53,47 @@
 // antes), fuera de el deambulan un paso aleatorio. Sigue siendo POR TURNOS:
 // nada de esto corre fuera del turno de los enemigos (StartEnemyTurn, mas
 // abajo). Ver el comentario junto a SimaActors_EnemyShouldChase.
-
-// player_walk.png (graphics/sima/gen.py) es una tira de 10 celdas de 16x16
-// recortadas de player.png: 3 mirando abajo (cara), 3 mirando arriba (nuca)
-// y 4 de perfil (fila 2 de player.png). Izquierda reutiliza las mismas 4
-// celdas de perfil volteadas por OAM (oam.hFlip más abajo); no hay arte de
-// perfil-izquierda por separado. graphics_file_rules.mk convierte esta hoja
-// con -mwidth 2 -mheight 2, así que cada celda de 16x16 ocupa 4 tiles de
-// hardware CONTIGUOS (a diferencia de tiles.4bpp, que es BG y usa el barrido
-// raster de la hoja completa vía PlaceCell en src/sima.c): "celda i" empieza
-// en el tile 4*i de la hoja.
 //
-// Tarea de sensacion (vista de perfil pura): la hoja sigue trayendo las 10
-// celdas (no se toco gen.py -- cambiar que frames se cargan obliga a
-// reajustar PLAYER_SHEET_FRAMES/el tamaño de sSheet_SimaPlayer, ver la nota
-// de cabecera del archivo sobre LoadSpriteSheet), pero UpdatePlayerSprite ya
-// NUNCA elige FRAME_DOWN_*/FRAME_UP_* -- el jugador solo se dibuja de perfil
-// (FRAME_SIDE_*), volteado por OAM. Los offsets de abajo, mirando
-// abajo/arriba, se dejan documentados (y sin usar) porque siguen siendo
-// ciertos sobre el contenido real de la hoja.
-static const u32 sPlayerGfx[] = INCBIN_U32("graphics/sima/player_walk.4bpp");
+// Tarea de animacion (esta): el dueño del proyecto separo y nombro los
+// frames del personaje (antes se recortaban a ojo de un elf.png grande --
+// ver el historial de graphics/sima/gen.py). Cinco estados nuevos, cableados
+// aqui:
+//   - idle (3 frames): en reposo, sin deslizarse. Ciclo lento (ver
+//     SIMA_IDLE_ANIM_PERIOD), corre siempre que SIMA_TURN_PLAYER_INPUT esta
+//     activo y el jugador no se esta desplazando.
+//   - move (4 frames): durante el deslizamiento de una casilla
+//     (SIMA_TURN_PLAYER_MOVE). SUSTITUYE al ciclo de 2 frames que habia antes
+//     (STEP_A/STEP_C de player_walk.png) -- ahora se ven los 4 frames reales
+//     de caminar, uno cada SIMA_MOVE_ANIM_PERIOD frames de juego (2), que
+//     encaja EXACTO en los SIMA_PLAYER_SLIDE_FRAMES (8) de un paso: 4
+//     frames * 2 = 8.
+//   - damage (5 frames): al recibir un golpe. SUSTITUYE al parpadeo
+//     programado (.invisible on/off) que habia antes -- ver el comentario
+//     grande junto a sPlayerInvulnTimer, mas abajo, sobre por que el
+//     temporizador se queda pero cambia de trabajo.
+//   - dead (3 frames): al llegar la vida a 0. Ver SIMA_TURN_PLAYER_DEAD y el
+//     GANCHO aislado en SimaActors_ResetAfterDeath.
+//   - teleport (6 frames, "se encoge y desaparece"): al bajar la escalera,
+//     ANTES del fundido a negro de cambio de piso. Ver SIMA_TURN_PLAYER_TELEPORT
+//     y SimaActors_StartTeleport.
+//
+// Los 21 frames (3+4+5+3+6) viven en UNA sola hoja, player_anim.png
+// (graphics/sima/gen.py, generate_player_anim), en ese mismo orden --
+// FRAME_*_BASE mas abajo depende de ese orden exacto, no lo cambies sin
+// actualizar gen.py tambien. Igual que antes con player_walk.png: la hoja
+// SOLO trae los frames mirando a la DERECHA (vista de perfil pura, ver mas
+// abajo) -- la izquierda es h-flip de OAM (oam.hFlip mas abajo), no hay arte
+// de perfil-izquierda por separado (verificado en la Tarea de animacion:
+// las hojas "-left" de origen son el espejo EXACTO frame a frame de las
+// "-right", 0 pixeles de diferencia). graphics_file_rules.mk convierte esta
+// hoja con -mwidth 2 -mheight 2, así que cada celda de 16x16 ocupa 4 tiles
+// de hardware CONTIGUOS (a diferencia de tiles.4bpp, que es BG y usa el
+// barrido raster de la hoja completa vía PlaceCell en src/sima.c): "celda i"
+// empieza en el tile 4*i de la hoja.
+//
+// Presupuesto de VRAM: 21 frames * 4 tiles/frame = 84 tiles de OBJ, de los
+// 1024 disponibles -- holgado (ver el brief de esta tarea).
+static const u32 sPlayerGfx[] = INCBIN_U32("graphics/sima/player_anim.4bpp");
 // Misma paleta única de SIMA que las celdas de sala (índice 0 transparente +
 // 4 tonos; ver src/sima.c). Se vuelve a incluir aquí (en vez de compartir el
 // array de sima.c) para que este archivo no dependa de símbolos internos de
@@ -81,21 +102,25 @@ static const u16 sPlayerPal[] = INCBIN_U16("graphics/sima/grounds.gbapal");
 
 #define TAG_SIMA_PLAYER 0x6000
 
-#define PLAYER_SHEET_FRAMES     10
-#define PLAYER_TILES_PER_FRAME  4  // 16x16 = 2x2 tiles de hardware de 8x8
+#define PLAYER_SHEET_FRAMES     21  // 3 idle + 4 move + 5 damage + 3 dead + 6 teleport
+#define PLAYER_TILES_PER_FRAME  4   // 16x16 = 2x2 tiles de hardware de 8x8
 
-// Offsets de tile (en tiles de 4bpp, no en celdas) de cada frame dentro de
-// la hoja, en el orden en que PLAYER_WALK_CELLS los empaqueta en gen.py.
-#define FRAME_DOWN_IDLE  (0 * PLAYER_TILES_PER_FRAME)
-#define FRAME_DOWN_STEP_A (1 * PLAYER_TILES_PER_FRAME)
-#define FRAME_DOWN_STEP_B (2 * PLAYER_TILES_PER_FRAME)
-#define FRAME_UP_IDLE    (3 * PLAYER_TILES_PER_FRAME)
-#define FRAME_UP_STEP_A  (4 * PLAYER_TILES_PER_FRAME)
-#define FRAME_UP_STEP_B  (5 * PLAYER_TILES_PER_FRAME)
-#define FRAME_SIDE_IDLE  (6 * PLAYER_TILES_PER_FRAME)
-#define FRAME_SIDE_STEP_A (7 * PLAYER_TILES_PER_FRAME)
-#define FRAME_SIDE_STEP_B (8 * PLAYER_TILES_PER_FRAME)
-#define FRAME_SIDE_STEP_C (9 * PLAYER_TILES_PER_FRAME)
+// Offsets de tile (en tiles de 4bpp, no en celdas) de cada grupo de frames
+// dentro de la hoja -- el orden EXACTO en que graphics/sima/gen.py
+// (PLAYER_ANIM_SOURCES) los concatena en player_anim.png. Un frame concreto
+// del grupo es BASE + paso*PLAYER_TILES_PER_FRAME, con paso en
+// [0, *_FRAME_COUNT).
+#define FRAME_IDLE_BASE     (0  * PLAYER_TILES_PER_FRAME)
+#define FRAME_MOVE_BASE     (3  * PLAYER_TILES_PER_FRAME)
+#define FRAME_DAMAGE_BASE   (7  * PLAYER_TILES_PER_FRAME)
+#define FRAME_DEAD_BASE     (12 * PLAYER_TILES_PER_FRAME)
+#define FRAME_TELEPORT_BASE (15 * PLAYER_TILES_PER_FRAME)
+
+#define IDLE_FRAME_COUNT     3
+#define MOVE_FRAME_COUNT     4
+#define DAMAGE_FRAME_COUNT   5
+#define DEAD_FRAME_COUNT     3
+#define TELEPORT_FRAME_COUNT 6
 
 // enum SimaFacing vive en include/sima.h desde la Tarea 7 (lo necesita
 // SimaActors_WeaponHitbox, expuesta al harness). Sigue teniendo 4 valores
@@ -262,11 +287,17 @@ static const struct SpriteTemplate sTmpl_SimaWeapon = {
 #define SIMA_ENEMY_SLIDE_FRAMES 8
 #define SIMA_ENEMY_SLIDE_SPEED (SIMA_TILE_PX / SIMA_ENEMY_SLIDE_FRAMES)  // 2 px/frame
 
-// Frames entre pasos del ciclo de caminata: con un deslizamiento de
-// SIMA_PLAYER_SLIDE_FRAMES=8, esto da exactamente UN cambio de pose a mitad
-// de casilla (dos poses distintas por casilla cruzada, igual que en tiempo
-// real).
-#define WALK_ANIM_PERIOD 4
+// Frames de juego entre pasos del ciclo de caminata (4 frames de move, ver
+// FRAME_MOVE_BASE/MOVE_FRAME_COUNT): con un deslizamiento de
+// SIMA_PLAYER_SLIDE_FRAMES=8, un periodo de 2 encaja EXACTO -- los 4 frames
+// de caminar se ven, uno cada uno, en cada casilla cruzada (2*4=8), a
+// diferencia del ciclo de 2 poses que habia antes de la tarea de animacion.
+#define SIMA_MOVE_ANIM_PERIOD 2
+
+// Ciclo idle (3 frames, ver FRAME_IDLE_BASE/IDLE_FRAME_COUNT): mucho mas
+// lento que el de caminar a proposito -- es "respirar quieto", no un paso.
+// NÚMERO DE GUSTO, afinable jugando.
+#define SIMA_IDLE_ANIM_PERIOD 20
 
 // Nota: nunca inicializar estos estaticos con un valor no-cero inline (p.
 // ej. "= MAX_SPRITES") -- el linker moderno de este repo descarta la
@@ -280,22 +311,57 @@ static s16 sPlayerX;   // esquina superior izquierda del sprite, en píxeles de 
 static s16 sPlayerY;
 static u8 sPlayerFacing;
 static bool8 sPlayerMoving;
-static u8 sPlayerAnimStep;    // 0/1: alterna entre los dos frames intermedios del paso
+static u8 sPlayerAnimStep;    // 0..MOVE_FRAME_COUNT-1: frame actual del ciclo de caminar
 static u8 sPlayerAnimTimer;
+static u8 sPlayerIdleAnimStep;   // 0..IDLE_FRAME_COUNT-1: frame actual del ciclo idle
+static u8 sPlayerIdleAnimTimer;
 
 // Vida y daño por contacto (Tarea 6). sPlayerHP arranca en 0 en .bss (misma
 // regla de estáticos que el resto del archivo) pero SimaActors_InitPlayer lo
 // fija a SIMA_PLAYER_MAX_HP antes de que nada pueda leerlo, así que nunca se
 // observa ese 0 transitorio.
 static u8 sPlayerHP;
-// Parpadeo de "te acaban de golpear" (puramente visual, ver UpdatePlayerSprite).
-// Con turnos, YA NO hace falta que esto bloquee nada -- lo que antes evitaba
-// que el mismo contacto continuo hiciera daño varias veces seguidas ahora lo
-// hace sPlayerHitThisTurn (un golpe como mucho por turno de enemigos, sin
-// importar cuántos se solapen). Este timer solo cuenta cuántos frames sigue
-// parpadeando el sprite.
+// Golpe recibido (tarea de animacion): sPlayerInvulnTimer ERA puramente
+// visual (parpadeo on/off de .invisible, porque no habia arte de golpe) --
+// desde esta tarea hace DOS trabajos:
+//   1. Sigue siendo el reloj de la animacion de golpe (5 frames de
+//      elf-take-damage-look-right.png, ver SimaActors_DamageAnimFrame):
+//      cuenta ATRAS desde SIMA_HIT_INVULN_FRAMES hasta 0, y mientras sea > 0
+//      UpdatePlayerSprite muestra el frame de golpe que toque en vez de
+//      idle/caminar.
+//   2. AHORA TAMBIEN es una regla de juego real: mientras sea > 0, un nuevo
+//      contacto de un enemigo NO hace daño (ver el guard en StartEnemyTurn,
+//      mas abajo). Decision de esta tarea -- antes NO bloqueaba nada (lo
+//      unico que evitaba dobles golpes en el MISMO turno de enemigos era
+//      sPlayerHitThisTurn, que sigue existiendo sin cambios). Motivo: sin
+//      esto, un jugador que se quede pegado a un enemigo (o a dos) podria
+//      perder varios corazones en turnos consecutivos MUY rapido, sin
+//      ninguna ventana para reaccionar al golpe que acaba de recibir --
+//      con turnos, "reaccionar" significa moverse o atacar en su proximo
+//      turno de INPUT, y SIMA_HIT_INVULN_FRAMES (20, ~0.33s) es mas corto
+//      que un turno completo de enemigos+deslizamiento, asi que esto NO
+//      vuelve al jugador invencible de verdad -- solo evita el caso
+//      degenerado de perder toda la vida en un parpadeo sin haber podido
+//      hacer nada. El empujon (StartPlayerKnockback) ya alejaba al jugador
+//      del enemigo la mayoria de las veces; esto cubre los casos en los que
+//      el empujon esta bloqueado por un muro y el jugador se queda pegado.
 static u8 sPlayerInvulnTimer;
-#define SIMA_HIT_FLASH_FRAMES 20   // NÚMERO DE GUSTO: ~0.33s a 60Hz de parpadeo tras un golpe
+
+// Muerte (tarea de animacion): sPlayerDeathTimer cuenta HACIA ARRIBA desde 0
+// mientras SIMA_TURN_PLAYER_DEAD esta activo (ver UpdatePlayerDeath),
+// reproduciendo los 3 frames de elf-dead-look-right.png. Al llegar a
+// SIMA_DEATH_ANIM_FRAMES (include/sima.h) se queda clavado ahi (no sigue
+// subiendo) hasta que src/sima.c note SimaActors_IsDeathAnimDone() y dispare
+// el fundido a negro -- ver el GANCHO grande junto a SimaActors_ResetAfterDeath.
+static u8 sPlayerDeathTimer;
+
+// Teleport/escalera (tarea de animacion): mismo patron que sPlayerDeathTimer
+// pero para los 6 frames de elf-teleport-disapear.png ("se encoge y
+// desaparece"), disparado por SimaActors_StartTeleport al pisar una
+// escalera desbloqueada -- ANTES del fundido de cambio de piso (que sigue
+// viviendo en src/sima.c, sin cambios en su mecanica, solo retrasado hasta
+// que esta animacion termine).
+static u8 sPlayerTeleportTimer;
 
 // ---------------------------------------------------------------------
 // Maquina de estados del turno. Compartida entre SimaActors_UpdatePlayer y
@@ -304,13 +370,23 @@ static u8 sPlayerInvulnTimer;
 // SIMA_TURN_PLAYER_INPUT (valor 0, igual que el resto de estaticos de este
 // archivo arrancan en su "reposo" via BSS) tanto por el orden del enum como
 // por el reinicio explicito en SimaActors_InitPlayer/WarpToFloor.
+//
+// SIMA_TURN_PLAYER_DEAD/SIMA_TURN_PLAYER_TELEPORT (tarea de animacion): dos
+// fases mas, FUERA del ciclo normal input->move/attack->enemy_step. Ninguna
+// de las dos lee input (SimaActors_UpdatePlayer solo llama a
+// UpdatePlayerInput en SIMA_TURN_PLAYER_INPUT) ni deja avanzar a los
+// enemigos (SimaActors_UpdateEnemies solo llama a AdvanceEnemyStepPhase en
+// SIMA_TURN_ENEMY_STEP) -- "nada se mueve si tu no te mueves" se mantiene
+// por construccion, no hace falta un guard aparte.
 // ---------------------------------------------------------------------
 enum SimaTurnPhase
 {
-    SIMA_TURN_PLAYER_INPUT,   // esperando direccion o A; el jugador puede actuar
-    SIMA_TURN_PLAYER_MOVE,    // jugador deslizandose a la casilla destino
-    SIMA_TURN_PLAYER_ATTACK,  // golpe en curso (reusa sAttackTimer/UpdateAttack)
-    SIMA_TURN_ENEMY_STEP,     // turno de los enemigos: se deslizan (y el jugador puede estar en pleno empujon)
+    SIMA_TURN_PLAYER_INPUT,    // esperando direccion o A; el jugador puede actuar
+    SIMA_TURN_PLAYER_MOVE,     // jugador deslizandose a la casilla destino
+    SIMA_TURN_PLAYER_ATTACK,   // golpe en curso (reusa sAttackTimer/UpdateAttack)
+    SIMA_TURN_ENEMY_STEP,      // turno de los enemigos: se deslizan (y el jugador puede estar en pleno empujon)
+    SIMA_TURN_PLAYER_DEAD,     // animacion de muerte en curso: sin input, sin turno de enemigos
+    SIMA_TURN_PLAYER_TELEPORT, // animacion de "encogerse y desvanecerse" en curso, antes del fundido de piso
 };
 
 static u8 sTurnPhase;
@@ -366,6 +442,9 @@ static void AdvancePlayerKnockback(void);
 static void StartPlayerKnockback(s8 enemyTileX, s8 enemyTileY);
 static void StartEnemyTurn(void);
 static void AdvanceEnemyStepPhase(void);
+static void UpdatePlayerDeath(void);
+static void UpdatePlayerTeleport(void);
+static void ResetPlayerAfterDeath(void);
 
 // Función pura (turnos): la casilla a la que el jugador se movería un paso
 // desde (x, y) [casillas de sala, no píxeles] mirando `facing`. Separada del
@@ -431,6 +510,53 @@ bool8 SimaActors_IsPlayerDead(void)
     return sPlayerHP == 0;
 }
 
+// Funciones puras (tarea de animacion): traducen un cronometro de estado
+// (que cuenta frames de juego) al indice de frame (0-based) de la animacion
+// correspondiente, saturando en el ultimo frame en vez de salirse de rango.
+// Separadas de UpdatePlayerSprite/los sprites para que el harness in-ROM
+// pueda comprobar la transicion de frame a frame (y sus fronteras exactas,
+// en particular el saturado al final) sin poder pulsar nada -- mismo
+// espiritu que SimaActors_ApplyDamage/PlayerStepTarget.
+//
+// SimaActors_DamageAnimFrame recibe `invulnTimer` con la MISMA semantica que
+// sPlayerInvulnTimer: cuenta ATRAS desde SIMA_HIT_INVULN_FRAMES (recien
+// golpeado) hasta 0 (fuera de la ventana de golpe) -- por eso el calculo
+// invierte el sentido (a mas timer restante, frame MAS TEMPRANO de la
+// animacion).
+u8 SimaActors_DamageAnimFrame(u8 invulnTimer)
+{
+    u8 elapsed, step;
+
+    if (invulnTimer == 0 || invulnTimer > SIMA_HIT_INVULN_FRAMES)
+        return 0;   // sin golpe en curso (o valor fuera de rango): primer frame por defecto
+
+    elapsed = SIMA_HIT_INVULN_FRAMES - invulnTimer;
+    step = elapsed / SIMA_DAMAGE_ANIM_PERIOD;
+    if (step >= DAMAGE_FRAME_COUNT)
+        step = DAMAGE_FRAME_COUNT - 1;
+    return step;
+}
+
+// SimaActors_DeathAnimFrame/TeleportAnimFrame reciben su cronometro con la
+// semantica CONTRARIA (cuentan hacia ADELANTE desde 0, como
+// sPlayerDeathTimer/sPlayerTeleportTimer) -- el calculo es la division
+// directa, saturada en el ultimo frame.
+u8 SimaActors_DeathAnimFrame(u8 deathTimer)
+{
+    u8 step = deathTimer / SIMA_DEATH_ANIM_PERIOD;
+    if (step >= DEAD_FRAME_COUNT)
+        step = DEAD_FRAME_COUNT - 1;
+    return step;
+}
+
+u8 SimaActors_TeleportAnimFrame(u8 teleportTimer)
+{
+    u8 step = teleportTimer / SIMA_TELEPORT_ANIM_PERIOD;
+    if (step >= TELEPORT_FRAME_COUNT)
+        step = TELEPORT_FRAME_COUNT - 1;
+    return step;
+}
+
 // Pura, sin sprites: ¿está el turno del jugador completamente resuelto (de
 // nuevo esperando input, con el sprite asentado exactamente en su casilla,
 // sin deslizamiento ni golpe en curso)? src/sima.c la usa para no comprobar
@@ -489,8 +615,12 @@ void SimaActors_InitPlayer(u8 floor)
     sPlayerMoving = FALSE;
     sPlayerAnimStep = 0;
     sPlayerAnimTimer = 0;
+    sPlayerIdleAnimStep = 0;    // tarea de animacion: ciclo idle, arranca en el primer frame
+    sPlayerIdleAnimTimer = 0;
     sPlayerHP = SIMA_PLAYER_MAX_HP;   // vida solo se fija al montar el modo, no en cada piso (ver WarpToFloor)
     sPlayerInvulnTimer = 0;
+    sPlayerDeathTimer = 0;      // tarea de animacion: sin animacion de muerte en curso
+    sPlayerTeleportTimer = 0;   // tarea de animacion: sin animacion de teleport en curso
     sAttackTimer = 0;   // sin golpe en curso (Tarea 7)
     sPlayerKnockbackTimer = 0;   // sin empujon en curso
     sPlayerSlideTimer = 0;       // sin deslizamiento en curso
@@ -543,18 +673,22 @@ void SimaActors_WarpToFloor(u8 floor)
     sPlayerMoving = FALSE;
     sPlayerAnimStep = 0;
     sPlayerAnimTimer = 0;
+    sPlayerIdleAnimStep = 0;
+    sPlayerIdleAnimTimer = 0;
     // sPlayerHP NO se resetea aquí a propósito: la vida es del intento, no
     // del piso -- bajar un piso con un corazón no debería devolverte los
-    // otros dos. El parpadeo de golpe sí se corta: no tiene sentido
-    // arrastrar frames de "acabo de recibir un golpe" al piso nuevo.
+    // otros dos. El golpe/parpadeo sí se corta: no tiene sentido arrastrar
+    // frames de "acabo de recibir un golpe" al piso nuevo.
     sPlayerInvulnTimer = 0;
-    // Golpe/deslizamiento/empujon en curso tampoco se arrastran al piso
-    // nuevo, misma razon: aparecer en el spawn nuevo a mitad de una
-    // animacion de un piso distinto seria confuso. El turno vuelve siempre a
-    // PLAYER_INPUT.
+    // Golpe/deslizamiento/empujon/muerte/teleport en curso tampoco se
+    // arrastran al piso nuevo, misma razon: aparecer en el spawn nuevo a
+    // mitad de una animacion de un piso distinto seria confuso. El turno
+    // vuelve siempre a PLAYER_INPUT.
     sAttackTimer = 0;
     sPlayerSlideTimer = 0;
     sPlayerKnockbackTimer = 0;
+    sPlayerDeathTimer = 0;
+    sPlayerTeleportTimer = 0;
     sTurnPhase = SIMA_TURN_PLAYER_INPUT;
     if (sWeaponActive)
         gSprites[sWeaponSpriteId].invisible = TRUE;
@@ -592,6 +726,20 @@ void SimaActors_UpdatePlayer(void)
         AdvancePlayerKnockback();
         UpdatePlayerSprite();
         break;
+    case SIMA_TURN_PLAYER_DEAD:
+        // Animacion de muerte en curso (ver StartEnemyTurn): sin input, sin
+        // turno de enemigos -- src/sima.c (CheckPlayerDeath) es quien saca
+        // al juego de esta fase, cuando SimaActors_IsDeathAnimDone() se
+        // cumpla, arrancando el fundido a negro.
+        UpdatePlayerDeath();
+        break;
+    case SIMA_TURN_PLAYER_TELEPORT:
+        // Animacion de "encogerse y desvanecerse" en curso (ver
+        // SimaActors_StartTeleport): igual que arriba, src/sima.c
+        // (CheckTeleportDone) dispara el fundido de cambio de piso cuando
+        // SimaActors_IsTeleportAnimDone() se cumpla.
+        UpdatePlayerTeleport();
+        break;
     }
 }
 
@@ -622,6 +770,19 @@ static void UpdatePlayerInput(void)
 {
     u8 moveDir;
     s8 curX, curY, nextX, nextY;
+
+    // Ciclo idle (tarea de animacion): corre TODOS los frames en que el
+    // jugador esta en SIMA_TURN_PLAYER_INPUT, sin importar que accion (si
+    // alguna) se decida despues este mismo frame -- el personaje "respira"
+    // mientras espera, no solo cuando de verdad no pasa nada.
+    sPlayerIdleAnimTimer++;
+    if (sPlayerIdleAnimTimer >= SIMA_IDLE_ANIM_PERIOD)
+    {
+        sPlayerIdleAnimTimer = 0;
+        sPlayerIdleAnimStep++;
+        if (sPlayerIdleAnimStep >= IDLE_FRAME_COUNT)
+            sPlayerIdleAnimStep = 0;
+    }
 
     if (JOY_NEW(A_BUTTON))
     {
@@ -711,11 +872,16 @@ static void UpdatePlayerSlide(void)
     sPlayerY += sPlayerSlideDY;
     sPlayerSlideTimer++;
 
+    // Ciclo de caminar (tarea de animacion): los 4 frames de move, uno cada
+    // SIMA_MOVE_ANIM_PERIOD frames de juego -- ver el comentario junto a esa
+    // constante sobre por que encaja exacto en SIMA_PLAYER_SLIDE_FRAMES.
     sPlayerAnimTimer++;
-    if (sPlayerAnimTimer >= WALK_ANIM_PERIOD)
+    if (sPlayerAnimTimer >= SIMA_MOVE_ANIM_PERIOD)
     {
         sPlayerAnimTimer = 0;
-        sPlayerAnimStep ^= 1;
+        sPlayerAnimStep++;
+        if (sPlayerAnimStep >= MOVE_FRAME_COUNT)
+            sPlayerAnimStep = 0;
     }
 
     if (sPlayerSlideTimer >= SIMA_PLAYER_SLIDE_FRAMES)
@@ -804,32 +970,70 @@ static void AdvancePlayerKnockback(void)
     }
 }
 
-// Escribe en el sprite el frame/flip que corresponde al facing y estado de
-// movimiento actuales, y sincroniza su posición en pantalla con
-// sPlayerX/sPlayerY. Único punto que toca gSprites[sPlayerSpriteId]: todas
-// las fases del turno pasan por aquí para no duplicar la tabla de frames.
+// Escribe en el sprite el frame/flip que corresponde al facing y estado
+// actuales, y sincroniza su posición en pantalla con sPlayerX/sPlayerY.
+// Único punto que toca gSprites[sPlayerSpriteId]: todas las fases del turno
+// pasan por aquí para no duplicar la tabla de frames.
 //
 // Vista de perfil pura (tarea de sensación): sPlayerFacing SOLO puede ser
-// SIMA_FACING_LEFT/SIMA_FACING_RIGHT ahora (ver el comentario de cabecera
-// del archivo), así que esta función ya no necesita un switch de 4 casos --
-// SIEMPRE usa la fila de perfil (FRAME_SIDE_*), y el único trabajo de
-// "orientación" es el h-flip. Esto es cierto incluso mientras el jugador
-// cruza una casilla en vertical (ARRIBA/ABAJO): UpdatePlayerInput nunca toca
-// sPlayerFacing en ese caso, así que el sprite conserva su última mirada
-// izquierda/derecha.
+// SIMA_FACING_LEFT/SIMA_FACING_RIGHT (ver el comentario de cabecera del
+// archivo), así que el único trabajo de "orientación" es el h-flip -- cierto
+// incluso mientras el jugador cruza una casilla en vertical (ARRIBA/ABAJO):
+// UpdatePlayerInput nunca toca sPlayerFacing en ese caso.
+//
+// Prioridad de animación (tarea de animación): a diferencia de antes (un
+// simple if/else movimiento-vs-quieto), ahora hay varios estados que pueden
+// coincidir en el tiempo, y solo UNO puede dibujarse. El orden, de mayor a
+// menor prioridad, y por qué:
+//   1. MUERTE (SIMA_TURN_PLAYER_DEAD) -- si el jugador está muriendo, nada
+//      más importa visualmente.
+//   2. TELEPORT (SIMA_TURN_PLAYER_TELEPORT) -- mismo argumento; y de hecho
+//      estas dos fases son mutuamente excluyentes con TODO lo demás (ver el
+//      comentario de la máquina de estados, junto al enum).
+//   3. GOLPE (sPlayerInvulnTimer > 0) -- por delante de mover/quieto aposta:
+//      el jugador puede recibir un golpe y, sin que termine el flash de
+//      reacción, quedarse quieto o empezar a moverse en su turno siguiente
+//      (el golpe no bloquea el turno, solo blinda de un segundo golpe --
+//      ver el comentario junto a sPlayerInvulnTimer). Se prefiere seguir
+//      viendo la reacción al golpe durante su ventana completa antes que
+//      cortarla por un nuevo movimiento.
+//   4. MOVIÉNDOSE (sPlayerMoving) -- ciclo de caminar.
+//   5. QUIETO -- ciclo idle.
 static void UpdatePlayerSprite(void)
 {
     struct Sprite *sprite = &gSprites[sPlayerSpriteId];
     u16 frameTile;
     bool8 hFlip = (sPlayerFacing == SIMA_FACING_LEFT);
+    bool8 hidden = FALSE;
 
-    // Ciclo de paso de 2 frames (alterna STEP_A/STEP_C): suficiente para
-    // leerse como caminata sin meter una máquina de 3 estados.
-    // FRAME_SIDE_STEP_B (la pose "de paso" intermedia de player.png) queda
-    // sin usar a propósito -- STEP_A/STEP_C son las dos zancadas más
-    // distintas entre sí, dan más contraste alternando.
-    frameTile = !sPlayerMoving ? FRAME_SIDE_IDLE
-                : (sPlayerAnimStep ? FRAME_SIDE_STEP_C : FRAME_SIDE_STEP_A);
+    if (sTurnPhase == SIMA_TURN_PLAYER_DEAD)
+    {
+        frameTile = FRAME_DEAD_BASE
+            + SimaActors_DeathAnimFrame(sPlayerDeathTimer) * PLAYER_TILES_PER_FRAME;
+    }
+    else if (sTurnPhase == SIMA_TURN_PLAYER_TELEPORT)
+    {
+        frameTile = FRAME_TELEPORT_BASE
+            + SimaActors_TeleportAnimFrame(sPlayerTeleportTimer) * PLAYER_TILES_PER_FRAME;
+        // Una vez agotados los 6 frames (ya totalmente "desaparecido") se
+        // oculta del todo -- por si el último frame de
+        // elf-teleport-disapear.png no fuese 100% transparente, no hay que
+        // confiar en el arte para el efecto final, la lógica lo garantiza.
+        hidden = (sPlayerTeleportTimer >= SIMA_TELEPORT_ANIM_FRAMES);
+    }
+    else if (sPlayerInvulnTimer > 0)
+    {
+        frameTile = FRAME_DAMAGE_BASE
+            + SimaActors_DamageAnimFrame(sPlayerInvulnTimer) * PLAYER_TILES_PER_FRAME;
+    }
+    else if (sPlayerMoving)
+    {
+        frameTile = FRAME_MOVE_BASE + sPlayerAnimStep * PLAYER_TILES_PER_FRAME;
+    }
+    else
+    {
+        frameTile = FRAME_IDLE_BASE + sPlayerIdleAnimStep * PLAYER_TILES_PER_FRAME;
+    }
 
     sprite->oam.tileNum = sprite->sheetTileStart + frameTile;
     // Sin sistema de ANIMCMD de por medio (ver el comentario de sTmpl_SimaPlayer),
@@ -839,10 +1043,88 @@ static void UpdatePlayerSprite(void)
     sprite->oam.matrixNum = hFlip ? ST_OAM_HFLIP : 0;
     sprite->x = sPlayerX + 8;
     sprite->y = sPlayerY + 8;
-    // Parpadeo de "te acaban de golpear" (puramente visual, ver el
-    // comentario junto a sPlayerInvulnTimer): se apaga y enciende cada 4
-    // frames mientras dure.
-    sprite->invisible = (sPlayerInvulnTimer > 0) && ((sPlayerInvulnTimer / 4) & 1);
+    sprite->invisible = hidden;
+}
+
+// SIMA_TURN_PLAYER_DEAD: avanza el cronómetro de la animación de muerte
+// (clavado en SIMA_DEATH_ANIM_FRAMES al llegar, no sigue subiendo -- ver
+// SimaActors_IsDeathAnimDone) y sincroniza el sprite. src/sima.c
+// (CheckPlayerDeath) es quien decide cuándo, con la animación ya terminada,
+// arrancar el fundido a negro real.
+static void UpdatePlayerDeath(void)
+{
+    if (sPlayerDeathTimer < SIMA_DEATH_ANIM_FRAMES)
+        sPlayerDeathTimer++;
+    UpdatePlayerSprite();
+}
+
+// SIMA_TURN_PLAYER_TELEPORT: mismo patrón que UpdatePlayerDeath para la
+// animación de "encogerse y desvanecerse" (ver SimaActors_StartTeleport).
+static void UpdatePlayerTeleport(void)
+{
+    if (sPlayerTeleportTimer < SIMA_TELEPORT_ANIM_FRAMES)
+        sPlayerTeleportTimer++;
+    UpdatePlayerSprite();
+}
+
+bool8 SimaActors_IsDeathAnimDone(void)
+{
+    return sTurnPhase == SIMA_TURN_PLAYER_DEAD
+        && sPlayerDeathTimer >= SIMA_DEATH_ANIM_FRAMES;
+}
+
+bool8 SimaActors_IsTeleportAnimDone(void)
+{
+    return sTurnPhase == SIMA_TURN_PLAYER_TELEPORT
+        && sPlayerTeleportTimer >= SIMA_TELEPORT_ANIM_FRAMES;
+}
+
+// Arranca la animación de "encogerse y desvanecerse" (tarea de animación):
+// llamada por src/sima.c (CheckStairs) al pisar una escalera desbloqueada,
+// EN VEZ de fundir a negro directamente como hacía antes. El fundido de
+// verdad lo dispara src/sima.c (CheckTeleportDone) cuando
+// SimaActors_IsTeleportAnimDone() se cumpla.
+void SimaActors_StartTeleport(void)
+{
+    sPlayerTeleportTimer = 0;
+    sTurnPhase = SIMA_TURN_PLAYER_TELEPORT;
+    if (sWeaponActive)
+        gSprites[sWeaponSpriteId].invisible = TRUE;   // por si quedara visible de un golpe justo antes
+    UpdatePlayerSprite();
+}
+
+// Repone al jugador tras morir: spawn del piso actual, vida llena. A
+// diferencia de SimaActors_WarpToFloor (que preserva la vida a propósito --
+// bajar un piso con un corazón no debería devolver los otros dos), morir SÍ
+// restaura la vida al máximo: es un reinicio del intento, no un progreso.
+// Estática (no expuesta) -- la única entrada pública de esta ruta es
+// SimaActors_ResetAfterDeath, más abajo, que además repone a los enemigos.
+static void ResetPlayerAfterDeath(void)
+{
+    s8 spawnX, spawnY;
+
+    SimaRoom_GetSpawn(sPlayerFloor, &spawnX, &spawnY);
+
+    sPlayerX = (s16)spawnX * SIMA_TILE_PX;
+    sPlayerY = (s16)spawnY * SIMA_TILE_PX;
+    sPlayerFacing = SIMA_FACING_RIGHT;
+    sPlayerMoving = FALSE;
+    sPlayerAnimStep = 0;
+    sPlayerAnimTimer = 0;
+    sPlayerIdleAnimStep = 0;
+    sPlayerIdleAnimTimer = 0;
+    sPlayerHP = SIMA_PLAYER_MAX_HP;   // a diferencia de WarpToFloor: morir SÍ restaura la vida
+    sPlayerInvulnTimer = 0;
+    sPlayerDeathTimer = 0;
+    sPlayerTeleportTimer = 0;
+    sAttackTimer = 0;
+    sPlayerSlideTimer = 0;
+    sPlayerKnockbackTimer = 0;
+    sTurnPhase = SIMA_TURN_PLAYER_INPUT;   // el turno queda coherente: listo para leer input de nuevo
+    if (sWeaponActive)
+        gSprites[sWeaponSpriteId].invisible = TRUE;
+
+    UpdatePlayerSprite();
 }
 
 // Avanza el golpe en curso (Tarea 7): decide qué frame del arma mostrar (o
@@ -1262,6 +1544,102 @@ void SimaActors_InitEnemies(u8 floor)
     sPlayerHitThisTurn = FALSE;
 }
 
+// Repone a los enemigos en sus casillas de spawn del piso, todos vivos --
+// llamada SOLO desde SimaActors_ResetAfterDeath, más abajo (ver el GANCHO
+// grande junto a esa función). A diferencia de SimaActors_InitEnemies, esta
+// función NO vuelve a llamar LoadSpriteSheet (nota de cabecera del archivo:
+// no es idempotente) -- las hojas de rat/bat/slime ya están en VRAM desde
+// que el modo se montó, y con SIMA_FLOOR_COUNT sin cambiar de piso aquí
+// (siempre se muere y se repone en el MISMO piso) el conjunto de especies
+// por slot tampoco cambia.
+//
+// Cada slot con enemigo (i < count) puede estar en uno de tres estados
+// cuando esto se llama:
+//   - vivo (sEnemyAlive[i] == TRUE): el sprite existe, solo hay que
+//     reposicionarlo y asegurarse de que es visible.
+//   - "cadáver" en curso (sEnemyDeathTimer[i] > 0): el sprite TAMBIÉN existe
+//     todavía (SimaActors_UpdateEnemies solo lo destruye cuando el
+//     cronómetro llega a 0) -- se reutiliza igual que el caso vivo.
+//   - ya destruido del todo (sEnemyAlive[i] == FALSE Y sEnemyDeathTimer[i]
+//     == 0): DestroySprite ya se llamó (ver SimaActors_UpdateEnemies) y
+//     sEnemySpriteId[i] ya no apunta a nada válido -- hace falta CreateSprite
+//     de nuevo. Esto SÍ es seguro sin repetir LoadSpriteSheet: CreateSprite
+//     solo pide un hueco de OAM nuevo que referencia tiles que YA están
+//     cargados por tag (ver sTmpl_Sima* / TAG_SIMA_RAT|BAT|SLIME).
+static void ResetEnemiesAfterDeath(u8 floor)
+{
+    u8 i, count;
+
+    count = SimaRoom_GetEnemyCount(floor);
+    if (count > SIMA_MAX_ENEMIES)
+        count = SIMA_MAX_ENEMIES;
+    sEnemyCount = count;
+
+    for (i = 0; i < SIMA_MAX_ENEMIES; i++)
+    {
+        s8 ex, ey;
+
+        if (i >= count)
+        {
+            sEnemyAlive[i] = FALSE;   // este slot nunca tuvo enemigo en este piso
+            sEnemyDeathTimer[i] = 0;
+            continue;
+        }
+
+        SimaRoom_GetEnemy(floor, i, &ex, &ey);
+        sEnemyX[i] = (s16)ex * SIMA_TILE_PX;
+        sEnemyY[i] = (s16)ey * SIMA_TILE_PX;
+        sEnemyMoving[i] = FALSE;
+
+        if (!sEnemyAlive[i] && sEnemyDeathTimer[i] == 0)
+        {
+            // Sprite ya destruido (ver el comentario de cabecera de esta
+            // función): pedir uno nuevo.
+            sEnemySpriteId[i] = CreateSprite(sEnemyTemplates[i % SIMA_ENEMY_KIND_COUNT],
+                                              sEnemyX[i] + 8, sEnemyY[i] + 8, 1);
+            sEnemyAlive[i] = (sEnemySpriteId[i] != MAX_SPRITES);
+        }
+        else
+        {
+            // Vivo, o cadáver con sprite todavía en pantalla: reutilizar.
+            gSprites[sEnemySpriteId[i]].x = sEnemyX[i] + 8;
+            gSprites[sEnemySpriteId[i]].y = sEnemyY[i] + 8;
+            gSprites[sEnemySpriteId[i]].invisible = FALSE;
+            gSprites[sEnemySpriteId[i]].oam.tileNum =
+                gSprites[sEnemySpriteId[i]].sheetTileStart + ENEMY_FRAME_IDLE_A;
+            sEnemyAlive[i] = TRUE;
+        }
+        sEnemyDeathTimer[i] = 0;
+    }
+
+    sEnemyAnimTimer = 0;
+    sEnemyAnimStep = 0;
+    sEnemyStepTimer = 0;
+    sPlayerHitThisTurn = FALSE;
+}
+
+// ---------------------------------------------------------------------
+// GANCHO -- fin del prólogo (pendiente; ver docs/superpowers/specs/2026-07-17
+// -pokemon-phantom-design.md y MEMORY.md "intro-frontend-vision"). En el
+// guion final, MORIR en SIMA es lo que termina el prólogo: la pantalla
+// debería llevar al marcador con el récord del hermano (el mismo sistema de
+// high score del shmup del intro), no reiniciar el piso en el que estabas.
+//
+// Ese marcador TODAVÍA NO EXISTE en el código, así que hoy la única salida
+// razonable es reponer al jugador y a los enemigos en el piso actual -- pero
+// se aísla aquí, en su propia función con su propio punto de llamada (ver
+// src/sima.c, UpdateFloorTransition, caso SIMA_TRANS_FADE_OUT con
+// sTransitionIsDeath == TRUE, marcado con el mismo comentario "GANCHO"),
+// para que quien construya el marcador lo encuentre a la primera: sustituir
+// (o encadenar tras) la llamada a SimaActors_ResetAfterDeath() por el corte
+// a esa pantalla.
+// ---------------------------------------------------------------------
+void SimaActors_ResetAfterDeath(u8 floor)
+{
+    ResetPlayerAfterDeath();
+    ResetEnemiesAfterDeath(floor);
+}
+
 // Arranca el turno de los enemigos: llamada UNA vez, en el frame exacto en
 // que termina el paso o el golpe del jugador (ver UpdatePlayerSlide/UpdateAttack).
 // Para cada enemigo vivo (ni muerto ni en pleno cadáver) calcula la
@@ -1311,11 +1689,19 @@ static void StartEnemyTurn(void)
         {
             // Ataque: el paso del enemigo aterriza en la casilla del
             // jugador. No se mueve el sprite del enemigo -- solo el jugador
-            // retrocede, vía knockback. Un solo golpe por turno.
-            if (!sPlayerHitThisTurn)
+            // retrocede, vía knockback. Un solo golpe por turno
+            // (sPlayerHitThisTurn) Y, desde la tarea de animación, ninguno
+            // en absoluto mientras el golpe anterior siga en su ventana de
+            // invulnerabilidad (sPlayerInvulnTimer > 0 -- ver el comentario
+            // grande junto a esa variable sobre por qué). Si el golpe se
+            // descarta por cualquiera de las dos razones, el enemigo
+            // simplemente se queda plantado ahí este turno (no avanza más,
+            // no hace nada) -- no es un bug, es la misma regla "adyacente no
+            // te deja pasar" de siempre, solo que sin efecto.
+            if (!sPlayerHitThisTurn && sPlayerInvulnTimer == 0)
             {
                 sPlayerHP = SimaActors_ApplyDamage(sPlayerHP, SIMA_ENEMY_CONTACT_DAMAGE);
-                sPlayerInvulnTimer = SIMA_HIT_FLASH_FRAMES;
+                sPlayerInvulnTimer = SIMA_HIT_INVULN_FRAMES;
                 StartPlayerKnockback(ex, ey);
                 sPlayerHitThisTurn = TRUE;
             }
@@ -1332,7 +1718,27 @@ static void StartEnemyTurn(void)
         // (sEnemyMoving[i] ya es FALSE).
     }
 
-    sTurnPhase = SIMA_TURN_ENEMY_STEP;
+    // Muerte (tarea de animación): SimaActors_IsPlayerDead() -- expuesta
+    // desde la Tarea 6 pero nadie la llamaba hasta ahora -- se comprueba
+    // AQUÍ, justo después de resolver todos los golpes de este turno. Si el
+    // jugador acaba de llegar a 0 de vida, el turno NO pasa a
+    // SIMA_TURN_ENEMY_STEP: cualquier sEnemyMoving[i] que se haya dejado
+    // marcado arriba se queda sin resolver (inofensivo -- ver
+    // ResetEnemiesAfterDeath, que va a recolocar a TODOS los enemigos de
+    // todos modos en cuanto termine el fundido) y el empujón que acabe de
+    // arrancar (StartPlayerKnockback, arriba) se descarta sin más: morir
+    // corta cualquier otro efecto visual a medias, la animación de muerte es
+    // lo único que se ve a partir de aquí.
+    if (SimaActors_IsPlayerDead())
+    {
+        sPlayerKnockbackTimer = 0;
+        sPlayerDeathTimer = 0;
+        sTurnPhase = SIMA_TURN_PLAYER_DEAD;
+    }
+    else
+    {
+        sTurnPhase = SIMA_TURN_ENEMY_STEP;
+    }
 }
 
 // Avanza un frame el deslizamiento de todos los enemigos en marcha. Al

@@ -385,6 +385,51 @@ static void Test_SimaEnemyShouldChase(void)
     PHANTOM_ASSERT(SimaActors_EnemyShouldChase(255) == FALSE, "sima-enemy-wander-far");
 }
 
+// Test 14 (tarea de animación): SimaActors_DamageAnimFrame/DeathAnimFrame/
+// TeleportAnimFrame (src/sima_actors.c) son las funciones puras que traducen
+// un cronómetro de estado al índice de frame (0-based) de cada animación
+// nueva -- separadas de UpdatePlayerSprite/los sprites para que el harness
+// las ejercite sin sprites, igual que el resto de funciones puras de este
+// archivo. Los números de frame concretos (4, 2, 1, 5) son literales porque
+// DAMAGE_FRAME_COUNT/DEAD_FRAME_COUNT/TELEPORT_FRAME_COUNT son privados de
+// src/sima_actors.c (mismo criterio que sima-damage-normal, más arriba, que
+// también espera un literal en vez de una constante).
+//
+// SimaActors_DamageAnimFrame recibe el cronómetro con semántica DECRECIENTE
+// (cuenta atrás desde SIMA_HIT_INVULN_FRAMES, igual que sPlayerInvulnTimer):
+// el valor MÁS ALTO es el primer frame, el más bajo (1) el último.
+// SimaActors_DeathAnimFrame/TeleportAnimFrame usan la semántica CRECIENTE
+// contraria (cuentan desde 0, igual que sPlayerDeathTimer/sPlayerTeleportTimer).
+static void Test_SimaAnimFrames(void)
+{
+    // Golpe (5 frames): recién golpeado (timer al máximo) es el frame 0;
+    // 12 (a mitad de los 20 frames de ventana) cae en el frame 2; 1 (a punto
+    // de expirar) es el último frame (4); 0 (sin golpe en curso) usa el
+    // primer frame por defecto -- no debería leerse nunca en juego (la
+    // rama de UpdatePlayerSprite que llama a esta función solo se toma con
+    // sPlayerInvulnTimer > 0), pero definido y probado igual para que la
+    // función sea total.
+    PHANTOM_ASSERT(SimaActors_DamageAnimFrame(SIMA_HIT_INVULN_FRAMES) == 0, "sima-damage-anim-just-hit");
+    PHANTOM_ASSERT(SimaActors_DamageAnimFrame(12) == 2, "sima-damage-anim-mid");
+    PHANTOM_ASSERT(SimaActors_DamageAnimFrame(1) == 4, "sima-damage-anim-last");
+    PHANTOM_ASSERT(SimaActors_DamageAnimFrame(0) == 0, "sima-damage-anim-idle-defaults-first");
+
+    // Muerte (3 frames): 0 es el primer frame; a mitad de camino (6 de 18)
+    // el segundo; en SIMA_DEATH_ANIM_FRAMES (justo cuando
+    // SimaActors_IsDeathAnimDone empezaría a devolver TRUE) y más allá
+    // (255) se satura en el último frame (2), nunca se sale de rango.
+    PHANTOM_ASSERT(SimaActors_DeathAnimFrame(0) == 0, "sima-death-anim-first");
+    PHANTOM_ASSERT(SimaActors_DeathAnimFrame(6) == 1, "sima-death-anim-mid");
+    PHANTOM_ASSERT(SimaActors_DeathAnimFrame(SIMA_DEATH_ANIM_FRAMES) == 2, "sima-death-anim-saturates-at-done");
+    PHANTOM_ASSERT(SimaActors_DeathAnimFrame(255) == 2, "sima-death-anim-saturates-beyond");
+
+    // Teleport (6 frames): mismo patrón que muerte, con su último frame en 5.
+    PHANTOM_ASSERT(SimaActors_TeleportAnimFrame(0) == 0, "sima-teleport-anim-first");
+    PHANTOM_ASSERT(SimaActors_TeleportAnimFrame(13) == 2, "sima-teleport-anim-mid");
+    PHANTOM_ASSERT(SimaActors_TeleportAnimFrame(SIMA_TELEPORT_ANIM_FRAMES) == 5, "sima-teleport-anim-saturates-at-done");
+    PHANTOM_ASSERT(SimaActors_TeleportAnimFrame(255) == 5, "sima-teleport-anim-saturates-beyond");
+}
+
 void PhantomTest_Run(void)
 {
     PHANTOM_CHECKPOINT("suite-start");
@@ -407,6 +452,7 @@ void PhantomTest_Run(void)
     Test_SimaStairsUnlocked();
     Test_SimaWeaponHitbox();
     Test_SimaEnemyShouldChase();
+    Test_SimaAnimFrames();
     PHANTOM_CHECKPOINT("suite-end");
     PhantomTest_Finish(gPhantomTestFailed);
 }

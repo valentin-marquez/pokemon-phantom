@@ -20,7 +20,7 @@ ROM = "pokeemerald_modern_sima.gba"
 BOOT_FRAMES = 320
 
 ADDR_PLAYER_FACING = 0x03000eb0
-ADDR_TURN_PHASE = 0x03000eb6
+ADDR_TURN_PHASE = 0x03000eba
 ADDR_ATTACK_TIMER = None  # no hace falta: contamos frames a mano (ver mas abajo)
 
 FACING_LEFT, FACING_RIGHT = 2, 3
