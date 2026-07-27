@@ -419,9 +419,14 @@ static void UpdateStairsVisibility(void)
 // IZQUIERDA vive el arco de entrada del piso 1 (columna 1 de la fila 0, ver
 // sRoomTileGfx en src/sima_rooms_data.h) -- justo donde spawnea el jugador
 // -- así que ahí los corazones lo tapaban por completo. La esquina derecha
-// (columnas 12-14 de la fila 0) es cenefa de muro en el piso 1, sin nada
-// dinámico encima; no hay garantía de que siga siéndolo en pisos futuros
-// (2/3 aún no están dibujados en el editor), pero es la mejor apuesta hoy.
+// (columnas SIMA_ROOM_W - SIMA_PLAYER_MAX_HP .. SIMA_ROOM_W - 1 de la fila 0
+// -- columnas 10-14 con los 5 corazones actuales, antes 12-14 con 3) es
+// cenefa de muro en el piso 1, sin nada dinámico encima (verificado contra
+// sRoomTileGfx/sRoomSolid en src/sima_rooms_data.h: toda la fila 0 salvo la
+// columna 1 -- el arco de entrada -- es muro sólido); no hay garantía de que
+// siga siéndolo en pisos futuros (2/3 aún no están dibujados en el editor),
+// pero es la mejor apuesta hoy. Como el cálculo es relativo a
+// SIMA_PLAYER_MAX_HP, subir/bajar la vida máxima no requiere tocar el HUD.
 #define HUD_HEARTS_COL_START (SIMA_ROOM_W - SIMA_PLAYER_MAX_HP)
 
 static void DrawHud(void)
@@ -463,8 +468,8 @@ static void SetupGraphics(void)
     // casilla 0 por defecto NO es una celda vacia -- apunta al primer tile
     // de hud_hearts.4bpp, que tiene pixeles opacos de verdad. Hay que
     // rellenar el tilemap ENTERO con sBlankTile antes de que nada se
-    // copie a VRAM; DrawHud (mas abajo) despues solo toca las 3 celdas de
-    // los corazones, dejando el resto en blanco de verdad.
+    // copie a VRAM; DrawHud (mas abajo) despues solo toca las SIMA_PLAYER_MAX_HP
+    // celdas de los corazones, dejando el resto en blanco de verdad.
     FillBgTilemapBufferRect(1, HUD_TILE_COUNT, 0, 0, 32, 32, 0);
 
     // Paleta unica de SIMA (indice 0 transparente + 4 tonos): se carga una

@@ -5,8 +5,13 @@
 // durante el prologo. Ver docs/superpowers/specs/2026-07-21-prologo-consola-design.md
 void CB2_InitSima(void);
 
-// Vida del jugador (Tarea 6): 3 corazones, vease DrawHud en src/sima.c.
-#define SIMA_PLAYER_MAX_HP 3
+// Vida del jugador (Tarea 6, subido de 3 a 5 corazones a peticion del dueño
+// tras jugarlo): vease DrawHud en src/sima.c -- HUD_HEARTS_COL_START ahi
+// calcula la columna de arranque a partir de este numero, asi que subirlo
+// no exige tocar el HUD (verificado: en el piso 1 las columnas que libera
+// siguen siendo cenefa de muro sin nada dinamico encima, igual que las 3
+// originales).
+#define SIMA_PLAYER_MAX_HP 5
 
 // Direccion. Vivia como enum privado dentro de src/sima_actors.c hasta la
 // Tarea 7; se sube aqui porque SimaActors_WeaponHitbox (mas abajo) necesita
@@ -87,6 +92,22 @@ void SimaActors_InitEnemies(u8 floor);
 void SimaActors_UpdateEnemies(void);
 // Cuantos de los enemigos colocados en el piso siguen vivos ahora mismo.
 u8 SimaActors_GetAliveEnemyCount(void);
+
+// Colision jugador-enemigo (reconstruccion tras el apagon: existia antes,
+// se perdio -- sin ella el jugador podia caminar ENCIMA de un enemigo,
+// sprites superpuestos y un golpe sin telegrafo). Funcion pura, sin sprites:
+// ¿la casilla (x, y) coincide con la casilla de un enemigo VIVO (enemyX,
+// enemyY, enemyAlive)? Un enemigo muerto (enemyAlive == FALSE, aunque su
+// cadaver siga en pantalla unos frames mas) NO bloquea -- ya no hay nada
+// solido ahi. Expuesta para el harness in-ROM, igual que
+// SimaActors_ContactShouldDamage/PlayerStepTarget. Aplicada a los 3
+// enemigos reales por un helper interno de src/sima_actors.c
+// (TileHasLiveEnemy, no expuesto -- SimaActors_PlayerStepTarget en si sigue
+// siendo solo sobre muros, ver su comentario), usado ADEMAS de esa funcion
+// en UpdatePlayerInput (bloquear el paso del jugador sobre la casilla de un
+// enemigo vivo) y en el empujon por golpe (StartPlayerKnockback, para no
+// empujar al jugador encima de otro enemigo).
+bool8 SimaActors_TileMatchesEnemy(s8 x, s8 y, s8 enemyX, s8 enemyY, bool8 enemyAlive);
 
 // Funcion pura (turnos): la casilla a la que un enemigo en (ex, ey) daria su
 // paso hacia el jugador en (px, py) en el piso `floor`. Elige el eje que mas

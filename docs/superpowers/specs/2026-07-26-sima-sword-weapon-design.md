@@ -32,12 +32,29 @@ Lectura de los frames (secuencia del mandoble descendente):
 
 ## Decisiones (fijadas con el dueño)
 
-1. **Anclaje**: sobre el jugador, base abajo. Los 16px inferiores del arma tapan
-   la casilla del jugador; los 16px superiores quedan en la fila de arriba
-   (espada alzada). El arte ya se inclina a la izquierda y "alcanza" la casilla
-   objetivo por su propia silueta, así que no se desplaza hacia el objetivo.
-   - top-left del arma = `(sPlayerX, sPlayerY - 16)` → centro para `CreateSprite`
-     = `(sPlayerX + 8, sPlayerY)`.
+1. **Anclaje** (REVISADO — el primer intento, "sobre el jugador", se probó
+   jugando y el dueño lo rechazó: tapaba el sprite del jugador, se veía mal).
+   La espada se dibuja centrada en la **casilla ADYACENTE en la dirección de
+   mirada** — la misma casilla que ya amenaza el daño
+   (`SimaActors_WeaponHitbox`) — pegada al jugador pero **sin solaparlo**.
+   `SimaActors_WeaponHitbox` no cambia de geometría; ahora se reutiliza
+   también para POSICIONAR el sprite, no solo para calcular el daño.
+   - `SimaActors_WeaponHitbox(sAttackFacing, sPlayerX, sPlayerY, &hitX, &hitY)`
+     da la esquina superior izquierda de la casilla objetivo, en píxeles.
+     Como la función solo desplaza en X (vista de perfil pura: el objetivo
+     siempre está en la misma fila que el jugador), `hitY == sPlayerY`
+     siempre.
+   - Anclaje vertical (NÚMERO DE GUSTO, probado jugando): base del arma
+     alineada con la base de la casilla objetivo — los 16px inferiores del
+     arma "de pie" ocupan esa casilla, los 16px superiores quedan en la fila
+     de arriba (espada alzada). Mismo esquema vertical que el intento
+     anterior, solo cambia la columna sobre la que se centra.
+     top-left del arma = `(hitX, hitY - 16)` → centro para `CreateSprite`
+     = `(hitX + 8, hitY)`.
+   - Verificado contra el piso 1 real (fila y=6, sin muro en la fila de
+     arriba en las casillas donde golpean los enemigos): no tapa ninguna
+     fila de muro de forma fea. Si un piso futuro coloca muro justo encima
+     de una casilla golpeable, revisar este offset.
 2. **Secuencia de frames** sobre la cadencia existente (windup 3f / activo 4f /
    recuperación 9f): windup → frame 0; activo (4 frames) → frames 1,2,3,4;
    recuperación → oculto. La ventana de daño (`AttackHitboxActive`, timers 4–7)
@@ -65,11 +82,15 @@ orden OBJ 1D). `-mwidth 2` se mantiene. Actualizar el comentario de la regla.
 - Constantes: `WEAPON_TILES_PER_FRAME` 4→8, `WEAPON_SHEET_FRAMES` 4→5. Sustituir
   `FRAME_WEAPON_VERT/HORIZ_*` por `FRAME_WEAPON_RAISED/ARC1/ARC2/ARC3/REST`
   (`i * WEAPON_TILES_PER_FRAME`).
-- `CreateSprite` del arma (InitPlayer): centro `(sPlayerX + 8, sPlayerY)`.
+- `CreateSprite` del arma (InitPlayer): posición inicial arbitraria (columna
+  del jugador), invisible hasta el primer golpe — `UpdateAttack` la recoloca
+  cada frame de golpe.
 - `UpdateAttack`:
-  - Posición anclada al jugador (`x=sPlayerX+8, y=sPlayerY`); ya no usa
-    `SimaActors_WeaponHitbox` para posicionar (esa función sigue existiendo, la
-    usa `UpdateEnemies` para el daño).
+  - Posición anclada a la casilla adyacente (`SimaActors_WeaponHitbox(sAttackFacing,
+    sPlayerX, sPlayerY, &hitX, &hitY)`, luego `x=hitX+8, y=hitY`) — REVISADO,
+    ver decisión 1 actualizada arriba. `SimaActors_WeaponHitbox` en sí no
+    cambió de geometría, ahora se llama también desde `UpdateAttack` (antes
+    solo desde `UpdateEnemies` para el daño).
   - `hFlip = (sAttackFacing == SIMA_FACING_RIGHT)` (invierte la lógica actual).
   - Selección de frame: windup → `RAISED`; dentro del activo, índice relativo
     `0..3` → `ARC1,ARC2,ARC3,REST` (clamp al último); recuperación → oculto.
@@ -77,14 +98,18 @@ orden OBJ 1D). `-mwidth 2` se mantiene. Actualizar el comentario de la regla.
   espada sostenida en vez del arco.
 
 ## Sin cambios
-- `SimaActors_WeaponHitbox` — geometría de daño intacta.
+- `SimaActors_WeaponHitbox` — geometría de daño intacta (mismos valores LEFT/RIGHT
+  que antes); ahora tiene DOS llamadores (`UpdateAttack` para posicionar,
+  `UpdateEnemies` para el daño) en vez de uno.
 - `src/phantom_test.c` — `Test_SimaWeaponHitbox` sigue verde (LEFT→84, RIGHT→116).
 - Paleta compartida `TAG_SIMA_PLAYER`.
 
-## Riesgo a validar al correr
-Orden de dibujo espada↔jugador cuando se solapan (subpriority). Si la espada
-queda por detrás del prota, ajustar subpriority del sprite del arma.
+## Riesgo a validar al correr (RESUELTO)
+Orden de dibujo espada↔jugador cuando se solapan (subpriority): con el
+anclaje revisado (decisión 1) la espada ya NO se solapa con el jugador —
+vive en la casilla de al lado — así que este riesgo dejó de aplicar.
 
 ## Verificación
 - `make PHANTOM_TEST=1 modern` compila; el harness in-ROM pasa (hitbox intacto).
-- Inspección visual del golpe a izquierda y derecha en el minijuego.
+- Inspección visual del golpe a izquierda y derecha en el minijuego: la espada
+  debe verse en la casilla de al lado, sin tapar al jugador.

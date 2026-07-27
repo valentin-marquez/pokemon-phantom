@@ -181,17 +181,28 @@ static const struct SpriteTemplate sTmpl_SimaPlayer = {
 // y una espada en horizontal se lee sin esa ambigüedad. El arma principal del
 // prota ES una espada, así que se vuelve a ella ahora que se puede.
 //
-// GEOMETRÍA (el detalle que importa): el sprite es 16x32 -- el DOBLE de alto
-// que el jugador (16x16) -- porque los frames describen un mandoble
-// descendente en un canvas alto: la mitad SUPERIOR es la espada alzada, la
-// INFERIOR el reposo. Se ancla con su BASE sobre la fila del jugador: top-left
-// del arma = (sPlayerX, sPlayerY - 16), es decir sus 16px de abajo tapan la
-// casilla del jugador y los 16px de arriba quedan en la fila superior. Por eso
-// NO se dibuja sobre la casilla golpeada (como hacía el arco): la espada la
-// SOSTIENE el prota; su propia silueta ya se inclina hacia el objetivo. La
-// caja de golpe real (más abajo, SimaActors_WeaponHitbox, que NO cambió)
-// sigue apuntando a la casilla de al lado -- lo visual y el daño son cosas
-// separadas.
+// GEOMETRÍA (el detalle que importa, REVISADA -- el dueño rechazó el primer
+// intento): el sprite es 16x32 -- el DOBLE de alto que el jugador (16x16) --
+// porque los frames describen un mandoble descendente en un canvas alto: la
+// mitad SUPERIOR es la espada alzada, la INFERIOR el reposo. El primer
+// intento la anclaba SOBRE el jugador (centro en (sPlayerX+8, sPlayerY)),
+// tapando su sprite -- rechazado en la práctica, se veía mal. Ahora se ancla
+// en la CASILLA ADYACENTE en la dirección de mirada -- la misma casilla que
+// SimaActors_WeaponHitbox ya usaba para el daño, pegada al jugador pero SIN
+// solaparlo: top-left del arma = (hitX, hitY - 16), centro para CreateSprite
+// = (hitX + 8, hitY), con (hitX, hitY) el resultado de
+// SimaActors_WeaponHitbox(sAttackFacing, sPlayerX, sPlayerY, ...). Como esa
+// función solo desplaza en X (vista de perfil pura: la casilla objetivo
+// siempre está en la misma FILA que el jugador, hitY == sPlayerY), el
+// anclaje vertical queda igual que en el primer intento -- BASE del arma
+// alineada con la base de la casilla golpeada (sus 16px inferiores ocupan
+// esa casilla, los 16px superiores quedan en la fila de arriba, espada
+// alzada) -- NÚMERO DE GUSTO: probado contra el piso 1 real (fila y=6, sin
+// muro en la fila de arriba en las columnas donde golpean los enemigos) y no
+// tapa ninguna fila de muro de forma fea; si un piso futuro pone muro justo
+// encima de una casilla golpeable, revisar este offset. SimaActors_WeaponHitbox
+// en sí NO cambió -- solo se reutiliza también para POSICIONAR el sprite, no
+// solo para el daño.
 //
 // FRAMES (secuencia del mandoble, ver UpdateAttack): 0 = alzada (windup,
 // telégrafo), 1/2/3 = arco de tajo barriendo hacia abajo (ventana de impacto),
@@ -514,6 +525,13 @@ static void UpdatePlayerTeleport(void);
 static void ResetPlayerAfterDeath(void);
 static void AdvanceHitstop(void);
 static void UpdatePlayerDying(void);
+// Colisión jugador-enemigo (reconstrucción tras el apagón, ver el commit
+// 9fa98d870 y el informe de esta tarea): definida más abajo, junto al resto
+// del estado de enemigos (sEnemyX/Y/Alive), pero forward-declarada aquí
+// porque UpdatePlayerInput/StartPlayerKnockback -- que viven ANTES de esa
+// sección en el archivo -- la necesitan. Mismo patrón que StartEnemyTurn,
+// arriba.
+static bool8 TileHasLiveEnemy(s8 x, s8 y);
 
 // Función pura (turnos): la casilla a la que el jugador se movería un paso
 // desde (x, y) [casillas de sala, no píxeles] mirando `facing`. Separada del
@@ -733,11 +751,10 @@ void SimaActors_InitPlayer(u8 floor)
     // Paleta ya cargada arriba (sPal_SimaPlayer); LoadSpritePalette es
     // idempotente por tag, pero el arma ni la vuelve a pedir -- reutiliza la
     // misma carga del jugador via paletteTag en sTmpl_SimaWeapon.
-    // Centro en (sPlayerX+8, sPlayerY): para un sprite de 16x32 eso deja su
-    // top-left en (sPlayerX, sPlayerY-16) -- base alineada con la fila del
-    // jugador, mitad superior en la fila de arriba (ver UpdateAttack, que lo
-    // recoloca cada frame; esta posición inicial solo importa mientras arranca
-    // invisible).
+    // Posición inicial arbitraria (columna del jugador): UpdateAttack la
+    // recoloca sobre la casilla adyacente cada frame en cuanto arranca un
+    // golpe (ver el comentario grande sobre WEAPON_SHEET_FRAMES) -- esta
+    // solo importa mientras el arma arranca invisible, antes del primer golpe.
     sWeaponSpriteId = CreateSprite(&sTmpl_SimaWeapon, sPlayerX + 8, sPlayerY, 0);
     sWeaponActive = (sWeaponSpriteId != MAX_SPRITES);
     if (sWeaponActive)
@@ -1031,10 +1048,18 @@ static void UpdatePlayerInput(void)
     curX = (s8)(sPlayerX / SIMA_TILE_PX);
     curY = (s8)(sPlayerY / SIMA_TILE_PX);
 
-    if (!SimaActors_PlayerStepTarget(sPlayerFloor, curX, curY, moveDir, &nextX, &nextY))
+    if (!SimaActors_PlayerStepTarget(sPlayerFloor, curX, curY, moveDir, &nextX, &nextY)
+        || TileHasLiveEnemy(nextX, nextY))
     {
-        // Casilla bloqueada por un muro: no arranca deslizamiento, el turno
-        // se queda en PLAYER_INPUT (no consume turno -- igual que un giro).
+        // Casilla bloqueada por un muro, O por un enemigo vivo (colisión
+        // jugador-enemigo, reconstrucción tras el apagón -- se perdió y sin
+        // ella el jugador podía caminar ENCIMA de un enemigo: sprites
+        // superpuestos y un golpe sin telégrafo, ver el informe de esta
+        // tarea): no arranca deslizamiento, el turno se queda en
+        // PLAYER_INPUT (no consume turno -- igual que un giro o un muro).
+        // Nota de cortocircuito: si el muro ya bloqueaba, nextX/nextY quedan
+        // en (curX, curY) -- la propia casilla del jugador, que nunca tiene
+        // un enemigo vivo -- así que TileHasLiveEnemy ni se evalúa en ese caso.
         sPlayerMoving = FALSE;
         UpdatePlayerSprite();
         return;
@@ -1129,8 +1154,10 @@ static void StartPlayerKnockback(s8 enemyTileX, s8 enemyTileY)
     targetX = (s8)(px + dirX);
     targetY = (s8)(py + dirY);
 
-    if (SimaRoom_IsSolid(sPlayerFloor, targetX, targetY))
-        return;   // casilla de destino bloqueada: sin empujón, tal como pide el brief
+    if (SimaRoom_IsSolid(sPlayerFloor, targetX, targetY) || TileHasLiveEnemy(targetX, targetY))
+        return;   // casilla de destino bloqueada (muro, o OTRO enemigo vivo -- no
+                  // empujar al jugador encima de él, misma regla de colisión que
+                  // UpdatePlayerInput): sin empujón, tal como pide el brief
 
     sPlayerKnockbackDX = (s16)dirX * SIMA_KNOCKBACK_SLIDE_SPEED;
     sPlayerKnockbackDY = (s16)dirY * SIMA_KNOCKBACK_SLIDE_SPEED;
@@ -1397,6 +1424,7 @@ static void UpdateAttack(void)
         FRAME_WEAPON_ARC1, FRAME_WEAPON_ARC2, FRAME_WEAPON_ARC3, FRAME_WEAPON_REST,
     };
     bool8 hFlip;
+    s16 hitX, hitY;
 
     if (!sWeaponActive)
     {
@@ -1409,13 +1437,18 @@ static void UpdateAttack(void)
         return;
     }
 
-    // La espada la SOSTIENE el jugador: se ancla a su posición, NO a la casilla
-    // golpeada (esa la lee el daño en SimaActors_UpdateEnemies, aparte). Centro
-    // en (sPlayerX+8, sPlayerY): para el sprite de 16x32 eso deja la base sobre
-    // la fila del jugador y la mitad alzada en la de arriba (ver el comentario
-    // grande sobre WEAPON_SHEET_FRAMES).
-    gSprites[sWeaponSpriteId].x = sPlayerX + 8;
-    gSprites[sWeaponSpriteId].y = sPlayerY;
+    // REVISADO (el dueño rechazó anclar la espada sobre el jugador -- tapaba
+    // su sprite, ver el comentario grande sobre WEAPON_SHEET_FRAMES): se
+    // ancla en la casilla ADYACENTE que amenaza el golpe, la misma que
+    // SimaActors_WeaponHitbox ya calculaba para el daño (esa función NO
+    // cambia; ahora también posiciona el dibujo). hitY == sPlayerY siempre
+    // (vista de perfil pura: el objetivo está en la misma fila), así que la
+    // base del arma queda alineada con la base de esa casilla y la mitad
+    // alzada en la fila de arriba -- mismo anclaje vertical que antes, solo
+    // cambia la columna.
+    SimaActors_WeaponHitbox(sAttackFacing, sPlayerX, sPlayerY, &hitX, &hitY);
+    gSprites[sWeaponSpriteId].x = hitX + 8;
+    gSprites[sWeaponSpriteId].y = hitY;
 
     // El arte mira a la IZQUIERDA; se voltea para DERECHA. El flip es sobre el
     // centro del sprite (columna del jugador), así que la espada queda simétrica
@@ -2135,6 +2168,46 @@ void SimaActors_UpdateEnemies(void)
         gSprites[sEnemySpriteId[i]].x = sEnemyX[i] + 8;
         gSprites[sEnemySpriteId[i]].y = sEnemyY[i] + 8;
     }
+}
+
+// Función pura (colisión jugador-enemigo, reconstrucción tras el apagón --
+// existía antes, se perdió; sin ella el jugador podía caminar ENCIMA de un
+// enemigo, sprites superpuestos y un golpe sin telégrafo, ver el informe de
+// esta tarea): ¿la casilla (x, y) coincide con la casilla de un enemigo VIVO
+// (enemyX, enemyY, enemyAlive)? Separada de sEnemyX/sEnemyY/sEnemyAlive (el
+// estado real, ver más abajo) para que el harness in-ROM pueda comprobar la
+// frontera exacta -- vivo bloquea, muerto no -- sin sprites de por medio,
+// mismo espíritu que SimaActors_ContactShouldDamage/PlayerStepTarget. Un
+// enemigo MUERTO (enemyAlive == FALSE, aunque su cadáver siga en pantalla
+// unos frames más, ver sEnemyDeathTimer) deliberadamente NO bloquea: ya no
+// hay nada sólido en esa casilla, solo un efecto cosmético.
+bool8 SimaActors_TileMatchesEnemy(s8 x, s8 y, s8 enemyX, s8 enemyY, bool8 enemyAlive)
+{
+    return enemyAlive && x == enemyX && y == enemyY;
+}
+
+// Helper NO puro (a diferencia de la función de arriba): ¿hay algún enemigo
+// VIVO de los SIMA_MAX_ENEMIES slots en la casilla (x, y) del piso actual?
+// Aplica SimaActors_TileMatchesEnemy a cada uno -- necesita leer
+// sEnemyX/sEnemyY/sEnemyAlive (estado real, no expuesto al harness), por eso
+// se queda sin declarar en sima.h, a diferencia de la función pura. Llamada
+// desde UpdatePlayerInput (bloquear el paso del jugador) y
+// StartPlayerKnockback (no empujar al jugador encima de OTRO enemigo) --
+// ambas viven antes en el archivo, de ahí la forward-declaration junto al
+// resto de prototipos estáticos.
+static bool8 TileHasLiveEnemy(s8 x, s8 y)
+{
+    u8 i;
+
+    for (i = 0; i < SIMA_MAX_ENEMIES; i++)
+    {
+        s8 ex = (s8)(sEnemyX[i] / SIMA_TILE_PX);
+        s8 ey = (s8)(sEnemyY[i] / SIMA_TILE_PX);
+
+        if (SimaActors_TileMatchesEnemy(x, y, ex, ey, sEnemyAlive[i]))
+            return TRUE;
+    }
+    return FALSE;
 }
 
 u8 SimaActors_GetAliveEnemyCount(void)

@@ -295,6 +295,28 @@ static void Test_SimaEnemyStepTarget(void)
     PHANTOM_ASSERT(x == 6 && y == 1, "sima-step-enemy-reaches-player");
 }
 
+// Test (reconstruccion tras el apagon, ver el commit 9fa98d870 y el informe
+// de esta tarea): colision jugador-enemigo. SimaActors_TileMatchesEnemy
+// (src/sima_actors.c) es pura -- sin sprites, sin estado -- mismo espiritu
+// que SimaActors_ContactShouldDamage/PlayerStepTarget: la casilla de un
+// enemigo VIVO cuenta como bloqueada, la de uno MUERTO no (aunque su
+// cadaver siga en pantalla unos frames mas, ver sEnemyDeathTimer en
+// src/sima_actors.c) -- sin esto el jugador podia caminar ENCIMA de un
+// enemigo (sprites superpuestos, un golpe sin telegrafo). Las coordenadas
+// no importan (funcion pura, no lee estado real) mas alla de ejercitar
+// coincide/no-coincide en X y en Y por separado.
+static void Test_SimaEnemyCollision(void)
+{
+    PHANTOM_ASSERT(SimaActors_TileMatchesEnemy(5, 6, 5, 6, TRUE) == TRUE,
+                   "sima-enemy-collision-live-blocks");
+    PHANTOM_ASSERT(SimaActors_TileMatchesEnemy(5, 6, 5, 6, FALSE) == FALSE,
+                   "sima-enemy-collision-dead-does-not-block");
+    PHANTOM_ASSERT(SimaActors_TileMatchesEnemy(5, 6, 3, 6, TRUE) == FALSE,
+                   "sima-enemy-collision-different-column-does-not-block");
+    PHANTOM_ASSERT(SimaActors_TileMatchesEnemy(5, 6, 5, 7, TRUE) == FALSE,
+                   "sima-enemy-collision-different-row-does-not-block");
+}
+
 // Test 9 (Task 5): la progresion de pisos satura en el ultimo. Si desbordara,
 // SimaRoom_GetTile leeria fuera de la tabla de salas. Generico sobre
 // SIMA_FLOOR_COUNT (hoy 1, mientras los pisos 2/3 esten en stand-by en el
@@ -498,6 +520,7 @@ void PhantomTest_Run(void)
     Test_SimaRoomsValid();
     Test_SimaPlayerStepTarget();
     Test_SimaEnemyStepTarget();
+    Test_SimaEnemyCollision();
     Test_SimaFloorProgression();
     Test_SimaDamage();
     Test_SimaStairsUnlocked();
