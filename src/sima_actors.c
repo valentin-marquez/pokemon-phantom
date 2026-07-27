@@ -5,6 +5,8 @@
 #include "decompress.h"
 #include "main.h"
 #include "random.h"
+#include "sound.h"
+#include "constants/songs.h"
 
 // Jugador de SIMA: dungeon crawler POR TURNOS (encargo del dueño del
 // proyecto, sustituye a la version en tiempo real de la Tarea 4). La regla
@@ -76,6 +78,17 @@
 //   - teleport (6 frames, "se encoge y desaparece"): al bajar la escalera,
 //     ANTES del fundido a negro de cambio de piso. Ver SIMA_TURN_PLAYER_TELEPORT
 //     y SimaActors_StartTeleport.
+//
+// Tarea de sensación (esta, sobre lo anterior): "mantener para caminar" en
+// las 4 direcciones -- el dueño del proyecto reportó que caminar de lado se
+// sentía rígido porque el tap-to-turn (punto 2 de arriba) exigía SOLTAR y
+// volver a pulsar por cada casilla en el eje horizontal, mientras que
+// arriba/abajo sí se podían mantener. Arreglado en UpdatePlayerInput con un
+// margen de giro (SIMA_TURN_GRACE_FRAMES, sima.h): pulsar hacia el lado
+// contrario SIGUE girando gratis al instante, pero si el botón sigue
+// pulsado pasado el margen, arranca a caminar y encadena mientras se
+// mantenga -- toque corto = solo apuntar, mantener = caminar, en las 4
+// direcciones. Ver el comentario grande junto a UpdatePlayerInput.
 //
 // Los 21 frames (3+4+5+3+6) viven en UNA sola hoja, player_anim.png
 // (graphics/sima/gen.py, generate_player_anim), en ese mismo orden --
@@ -158,71 +171,61 @@ static const struct SpriteTemplate sTmpl_SimaPlayer = {
 };
 
 // ---------------------------------------------------------------------
-// Arma del jugador (Tarea 7, rehecha en la tarea de sensación del golpe):
-// sprite propio de 16x16, 4 frames recortados de graphics/sima/weapons.png
-// por graphics/sima/gen.py (generate_weapon). La versión original usaba 2
-// frames de UN mandoble en su única orientación diagonal disponible en la
-// hoja (mango arriba-izquierda, punta abajo-derecha) y lo orientaba con los
-// 4 combos de flip de OAM -- funcionaba para "esto es un arma", pero el
-// dueño reportó que el golpe "no se ve bien", "se buguea por dirección" y
-// sobre todo que no podía leer A QUÉ CASILLA le pegaba: una diagonal fija
-// usada para 4 direcciones cardinales es intrínsecamente ambigua (↘ sirve
-// tanto para ABAJO como para DERECHA, así que dos direcciones distintas
-// comparten el mismo dibujo) por mucho que la caja de golpe real (más abajo,
-// SimaActors_WeaponHitbox, que NO cambió) apunte a la casilla correcta.
+// Arma del jugador: una ESPADA de 16x32, 5 frames dibujados a mano por el
+// dueño (weapon_left_0..4.png) y apilados en weapon.4bpp por graphics/sima/
+// gen.py (generate_weapon). Reemplaza al ARCO DE TAJO de 16x16 que hubo antes
+// (ver git log de este bloque / de gen.py). El arco existió para desambiguar
+// 4 direcciones cardinales -- una espada diagonal servía igual para ABAJO que
+// para DERECHA -- pero con la vista de perfil pura sAttackFacing ya SOLO puede
+// ser IZQUIERDA/DERECHA (viene de sPlayerFacing, ver la cabecera del archivo),
+// y una espada en horizontal se lee sin esa ambigüedad. El arma principal del
+// prota ES una espada, así que se vuelve a ella ahora que se puede.
 //
-// Solución: en vez de una espada, un ARCO DE TAJO (media luna) que se dibuja
-// SOBRE la casilla golpeada -- eso ya no es ambiguo, se lee como "estoy
-// cortando AQUÍ" sin depender de que el jugador interprete la orientación
-// del arma. La hoja trae dos arcos que curvan limpiamente en un solo eje
-// (a diferencia de las dagas/espadas, que son todas diagonales -- ver
-// generate_weapon en gen.py para el resto de la hoja): un par vertical
-// (curva arriba/abajo, para golpes ARRIBA/ABAJO) y un par horizontal (para
-// IZQUIERDA/DERECHA). Cada par son las 2 fases del golpe -- FRAME_A durante
-// el windup, FRAME_B durante el impacto, igual que antes -- y la dirección
-// cardinal dentro de cada par se resuelve con UN flip de OAM (ver
-// UpdateAttack): VFLIP entre arriba/abajo dentro del par vertical, HFLIP
-// entre izquierda/derecha dentro del horizontal. Los arcos NO son simétricos
-// -- tienen más "masa" de píxeles hacia un lado (medido por centroide al
-// recortarlos) -- así que el flip se elige para que esa masa quede siempre
-// en el borde de la casilla más alejado del jugador, como si el filo
-// terminara de cruzarla; el lado fino/hueco queda cerca del jugador. Con eso
-// las 4 direcciones tienen arte que SÍ se distingue entre sí (2 imágenes de
-// origen distintas, no una sola girada), y encima cada una individualmente
-// se lee como "hacia allá" en vez de "en diagonal, adivina cuál mitad
-// cuenta".
+// GEOMETRÍA (el detalle que importa): el sprite es 16x32 -- el DOBLE de alto
+// que el jugador (16x16) -- porque los frames describen un mandoble
+// descendente en un canvas alto: la mitad SUPERIOR es la espada alzada, la
+// INFERIOR el reposo. Se ancla con su BASE sobre la fila del jugador: top-left
+// del arma = (sPlayerX, sPlayerY - 16), es decir sus 16px de abajo tapan la
+// casilla del jugador y los 16px de arriba quedan en la fila superior. Por eso
+// NO se dibuja sobre la casilla golpeada (como hacía el arco): la espada la
+// SOSTIENE el prota; su propia silueta ya se inclina hacia el objetivo. La
+// caja de golpe real (más abajo, SimaActors_WeaponHitbox, que NO cambió)
+// sigue apuntando a la casilla de al lado -- lo visual y el daño son cosas
+// separadas.
 //
-// Tarea de sensación (esta): con la vista de perfil pura, sAttackFacing ya
-// SOLO puede ser IZQUIERDA/DERECHA (viene de sPlayerFacing, que ahora nunca
-// vale arriba/abajo -- ver el comentario de cabecera del archivo), así que
-// el par vertical (FRAME_WEAPON_VERT_A/B) DEJA DE USARSE en juego: UpdateAttack
-// ya no comprueba el eje, siempre usa el par horizontal. La hoja sigue
-// trayendo los 4 frames (no se tocó gen.py, mismo motivo que con
-// player_walk.png) y las constantes VERT_* se dejan documentadas porque
-// siguen describiendo el layout real de weapon.4bpp.
+// FRAMES (secuencia del mandoble, ver UpdateAttack): 0 = alzada (windup,
+// telégrafo), 1/2/3 = arco de tajo barriendo hacia abajo (ventana de impacto),
+// 4 = reposo / follow-through. Se reparten sobre la cadencia existente del
+// golpe (windup / activo / recuperación).
+//
+// DIRECCIÓN: el arte viene MIRANDO A LA IZQUIERDA; para DERECHA se voltea con
+// UN flip de OAM (HFLIP en UpdateAttack), misma economía de VRAM que
+// player_anim (que solo carga "-right" y voltea para la izquierda). Por ahora
+// solo existe el arte de izquierda; el "de verdad" de derecha se dibujará
+// después, pero el HFLIP evita que el juego se rompa al atacar a la derecha.
 // ---------------------------------------------------------------------
 
 static const u32 sWeaponGfx[] = INCBIN_U32("graphics/sima/weapon.4bpp");
 
 #define TAG_SIMA_WEAPON 0x6004
 
-#define WEAPON_SHEET_FRAMES    4
-#define WEAPON_TILES_PER_FRAME 4  // 16x16 = 2x2 tiles de hardware, igual que jugador/enemigos
-// Orden de graphics/sima/gen.py (WEAPON_ARC_CELLS): vertical windup/activo,
-// luego horizontal windup/activo. La dirección cardinal (arriba vs abajo
-// dentro del par vertical, izquierda vs derecha dentro del horizontal) NO
-// vive aquí -- es un flip de OAM elegido en UpdateAttack según sAttackFacing.
-#define FRAME_WEAPON_VERT_A  (0 * WEAPON_TILES_PER_FRAME)  // arco vertical, windup
-#define FRAME_WEAPON_VERT_B  (1 * WEAPON_TILES_PER_FRAME)  // arco vertical, impacto
-#define FRAME_WEAPON_HORIZ_A (2 * WEAPON_TILES_PER_FRAME)  // arco horizontal, windup
-#define FRAME_WEAPON_HORIZ_B (3 * WEAPON_TILES_PER_FRAME)  // arco horizontal, impacto
+#define WEAPON_SHEET_FRAMES    5
+#define WEAPON_TILES_PER_FRAME 8  // 16x32 = 2x4 tiles de hardware (el doble de alto que jugador/enemigos)
+// Orden de graphics/sima/gen.py (generate_weapon): los 5 frames del mandoble
+// descendente, de alzada a reposo. La dirección (izquierda vs derecha) NO vive
+// aquí -- es un flip de OAM elegido en UpdateAttack según sAttackFacing.
+#define FRAME_WEAPON_RAISED (0 * WEAPON_TILES_PER_FRAME)  // espada alzada (windup)
+#define FRAME_WEAPON_ARC1   (1 * WEAPON_TILES_PER_FRAME)  // arco de tajo, inicio (impacto)
+#define FRAME_WEAPON_ARC2   (2 * WEAPON_TILES_PER_FRAME)  // arco de tajo, medio  (impacto)
+#define FRAME_WEAPON_ARC3   (3 * WEAPON_TILES_PER_FRAME)  // arco de tajo, fin    (impacto)
+#define FRAME_WEAPON_REST   (4 * WEAPON_TILES_PER_FRAME)  // reposo / follow-through
 
 static const struct OamData sOam_SimaWeapon = {
     .affineMode = ST_OAM_AFFINE_OFF,
     .objMode = ST_OAM_OBJ_NORMAL,
     .bpp = ST_OAM_4BPP,
-    .shape = SPRITE_SHAPE(16x16),
-    .size = SPRITE_SIZE(16x16),
+    .shape = SPRITE_SHAPE(16x32),
+    .size = SPRITE_SIZE(16x32),
     .priority = 1,  // misma capa que jugador/enemigos
 };
 
@@ -231,8 +234,8 @@ static const struct SpriteSheet sSheet_SimaWeapon = {
 };
 
 // paletteTag = TAG_SIMA_PLAYER a propósito, igual que los enemigos: misma
-// paleta única de sprites de SIMA para todo (el pack de armas ya viene en
-// los mismos 4 tonos, verificado al recortar weapon.png).
+// paleta única de sprites de SIMA para todo (los 5 frames de la espada usan
+// exactos los 4 tonos de SIMA -- verificado; gen.py aborta si no fuera así).
 static const struct SpriteTemplate sTmpl_SimaWeapon = {
     .tileTag = TAG_SIMA_WEAPON,
     .paletteTag = TAG_SIMA_PLAYER,
@@ -311,6 +314,17 @@ static s16 sPlayerX;   // esquina superior izquierda del sprite, en píxeles de 
 static s16 sPlayerY;
 static u8 sPlayerFacing;
 static bool8 sPlayerMoving;
+// Margen de giro (tarea de sensación "mantener para caminar"): sTurnGraceActive
+// es TRUE desde el frame en que el jugador gira hacia un lado al que no
+// miraba (JOY_HELD detecta la pulsación, sPlayerFacing cambia) hasta que el
+// margen se agota (empieza a caminar) o el botón se suelta (se cancela: solo
+// giró). sTurnGraceTimer cuenta frames de juego mientras está activo. Ambos
+// arrancan en su reposo (FALSE/0) vía BSS, misma regla de estáticos que el
+// resto del archivo. Ver SimaActors_ResolveHorizInput (declarada en sima.h)
+// para la lógica pura, y el comentario grande junto a UpdatePlayerInput para
+// cómo se usan aquí.
+static bool8 sTurnGraceActive;
+static u8 sTurnGraceTimer;
 static u8 sPlayerAnimStep;    // 0..MOVE_FRAME_COUNT-1: frame actual del ciclo de caminar
 static u8 sPlayerAnimTimer;
 static u8 sPlayerIdleAnimStep;   // 0..IDLE_FRAME_COUNT-1: frame actual del ciclo idle
@@ -321,31 +335,43 @@ static u8 sPlayerIdleAnimTimer;
 // fija a SIMA_PLAYER_MAX_HP antes de que nada pueda leerlo, así que nunca se
 // observa ese 0 transitorio.
 static u8 sPlayerHP;
-// Golpe recibido (tarea de animacion): sPlayerInvulnTimer ERA puramente
-// visual (parpadeo on/off de .invisible, porque no habia arte de golpe) --
-// desde esta tarea hace DOS trabajos:
-//   1. Sigue siendo el reloj de la animacion de golpe (5 frames de
-//      elf-take-damage-look-right.png, ver SimaActors_DamageAnimFrame):
-//      cuenta ATRAS desde SIMA_HIT_INVULN_FRAMES hasta 0, y mientras sea > 0
-//      UpdatePlayerSprite muestra el frame de golpe que toque en vez de
-//      idle/caminar.
-//   2. AHORA TAMBIEN es una regla de juego real: mientras sea > 0, un nuevo
-//      contacto de un enemigo NO hace daño (ver el guard en StartEnemyTurn,
-//      mas abajo). Decision de esta tarea -- antes NO bloqueaba nada (lo
-//      unico que evitaba dobles golpes en el MISMO turno de enemigos era
-//      sPlayerHitThisTurn, que sigue existiendo sin cambios). Motivo: sin
-//      esto, un jugador que se quede pegado a un enemigo (o a dos) podria
-//      perder varios corazones en turnos consecutivos MUY rapido, sin
-//      ninguna ventana para reaccionar al golpe que acaba de recibir --
-//      con turnos, "reaccionar" significa moverse o atacar en su proximo
-//      turno de INPUT, y SIMA_HIT_INVULN_FRAMES (20, ~0.33s) es mas corto
-//      que un turno completo de enemigos+deslizamiento, asi que esto NO
-//      vuelve al jugador invencible de verdad -- solo evita el caso
-//      degenerado de perder toda la vida en un parpadeo sin haber podido
-//      hacer nada. El empujon (StartPlayerKnockback) ya alejaba al jugador
-//      del enemigo la mayoria de las veces; esto cubre los casos en los que
-//      el empujon esta bloqueado por un muro y el jugador se queda pegado.
+// Golpe recibido. sPlayerInvulnTimer ERA puramente visual (parpadeo on/off
+// de .invisible, porque no habia arte de golpe); la tarea de animacion lo
+// convirtio en el reloj de la animacion de golpe (5 frames de
+// elf-take-damage-look-right.png, ver SimaActors_DamageAnimFrame) Y,
+// ADEMAS, en la ventana de invulnerabilidad como regla de juego -- ese
+// segundo trabajo se QUITA en la tarea de "damage feel" (ver el comentario
+// junto a SIMA_HIT_INVULN_FRAMES en sima.h sobre por que: 20 frames en un
+// juego POR TURNOS no protege de nada, el reloj se agota solo mientras el
+// jugador piensa). Desde esa tarea, sPlayerInvulnTimer vuelve a tener UN
+// solo trabajo -- el reloj de la animacion, cuenta ATRAS desde
+// SIMA_HIT_INVULN_FRAMES hasta 0, y mientras sea > 0 UpdatePlayerSprite
+// muestra el frame de golpe que toque en vez de idle/caminar/muerto -- y la
+// regla de juego real vive en sPlayerInvulnTurns, justo abajo.
 static u8 sPlayerInvulnTimer;
+
+// Inmunidad como regla de juego (tarea de "damage feel"): cuantos TURNOS de
+// enemigos, tras el ultimo golpe, el jugador sigue protegido de uno nuevo.
+// Arranca en .bss a 0 (sin proteccion). Al golpear, StartEnemyTurn lo fija a
+// SIMA_HIT_INVULN_TURNS (sima.h); en cada llamada posterior a StartEnemyTurn
+// -- osea, en cada turno de enemigos que se RESUELVE -- se decrementa UNA
+// vez, nunca en el mismo turno en que se acaba de fijar (ver el comentario
+// grande junto a StartEnemyTurn para el porque exacto de ese orden). A
+// diferencia de sPlayerInvulnTimer (arriba, en FRAMES, puramente visual
+// ahora), este contador es la UNICA fuente de verdad de "¿puede este
+// contacto hacerme daño?" -- SimaActors_ContactShouldDamage (sima.h) es la
+// funcion pura que lo lee.
+static u8 sPlayerInvulnTurns;
+
+// Congelacion de impacto (tarea de "damage feel"): cuenta ATRAS desde
+// SIMA_HITSTOP_FRAMES hasta 0 mientras sTurnPhase == SIMA_TURN_HITSTOP (ver
+// AdvanceHitstop). sPendingDeath es la unica diferencia entre "que pasa
+// cuando el hitstop termina" -- FALSE va a SIMA_TURN_ENEMY_STEP (golpe
+// normal, sigue el turno de los enemigos), TRUE va a SIMA_TURN_PLAYER_DYING
+// (golpe mortal: encadena daño -> muerte sin input de por medio, ver el
+// comentario grande junto a StartEnemyTurn).
+static u8 sHitstopTimer;
+static bool8 sPendingDeath;
 
 // Muerte (tarea de animacion): sPlayerDeathTimer cuenta HACIA ARRIBA desde 0
 // mientras SIMA_TURN_PLAYER_DEAD esta activo (ver UpdatePlayerDeath),
@@ -378,6 +404,13 @@ static u8 sPlayerTeleportTimer;
 // enemigos (SimaActors_UpdateEnemies solo llama a AdvanceEnemyStepPhase en
 // SIMA_TURN_ENEMY_STEP) -- "nada se mueve si tu no te mueves" se mantiene
 // por construccion, no hace falta un guard aparte.
+//
+// SIMA_TURN_HITSTOP/SIMA_TURN_PLAYER_DYING (tarea de "damage feel"): dos
+// fases mas, insertadas por StartEnemyTurn justo despues de resolver un
+// golpe -- ver su comentario grande para el diagrama completo. Igual que
+// DEAD/TELEPORT, ninguna de las dos lee input ni deja avanzar el
+// deslizamiento de los enemigos (los guards de UpdatePlayer/UpdateEnemies de
+// abajo solo reaccionan a sus fases nombradas).
 // ---------------------------------------------------------------------
 enum SimaTurnPhase
 {
@@ -387,6 +420,8 @@ enum SimaTurnPhase
     SIMA_TURN_ENEMY_STEP,      // turno de los enemigos: se deslizan (y el jugador puede estar en pleno empujon)
     SIMA_TURN_PLAYER_DEAD,     // animacion de muerte en curso: sin input, sin turno de enemigos
     SIMA_TURN_PLAYER_TELEPORT, // animacion de "encogerse y desvanecerse" en curso, antes del fundido de piso
+    SIMA_TURN_HITSTOP,         // congelacion de impacto: nada avanza, ni el reloj de la animacion de golpe
+    SIMA_TURN_PLAYER_DYING,    // golpe mortal: reaccion de golpe terminando de reproducirse antes del derrumbe
 };
 
 static u8 sTurnPhase;
@@ -421,6 +456,38 @@ static u8 sPlayerKnockbackTimer;
 #define SIMA_KNOCKBACK_SLIDE_FRAMES 4
 #define SIMA_KNOCKBACK_SLIDE_SPEED (SIMA_TILE_PX / SIMA_KNOCKBACK_SLIDE_FRAMES)  // 4 px/frame
 
+// Congelación de impacto / hit-stop (tarea de "damage feel", encargo del
+// dueño: "que pase algo" al recibir el golpe -- hoy solo había animación +
+// empujón, sin ningún momento de impacto real). Al aterrizar un golpe, TODO
+// se congela -- ni el jugador ni los enemigos avanzan un solo píxel, ni
+// siquiera el reloj de la animación de golpe -- durante
+// SIMA_HITSTOP_FRAMES, ANTES de que el empujón/deslizamiento de enemigos ya
+// calculados en StartEnemyTurn se reproduzcan. Es la fase SIMA_TURN_HITSTOP
+// (ver el enum), resuelta en AdvanceHitstop. NÚMERO DE GUSTO: 8 frames
+// (~133ms a 60Hz) es lo bastante corto para no sentirse como una pausa, pero
+// sobra para que el ojo registre "el juego se paró en seco aquí" -- el
+// truco barato y efectivo de hit-stop de toda la vida (Street Fighter II en
+// adelante), reencarnado aquí como un frenazo seco en vez de un efecto de
+// partículas o cámara, que no pega con el resto de SIMA (paso a paso,
+// deliberado).
+#define SIMA_HITSTOP_FRAMES 8
+
+// Sonido del golpe (tarea de "damage feel"): SIMA era, hasta esta tarea,
+// COMPLETAMENTE muda (verificado: cero PlaySE en todo src/sima.c y
+// src/sima_actors.c) -- un golpe sin sonido es, con diferencia, lo que más
+// restaba sensación de impacto ("no pasa nada" literal, no solo figurado).
+// SE_WALL_HIT es el "porrazo" genérico que el motor ya usa en el overworld
+// quien se choca contra un muro/objeto (src/field_player_avatar.c) -- un
+// golpe corto y seco, sin melodía ni asociación a un movimiento Pokémon
+// concreto (a diferencia de SE_M_MEGA_KICK/SE_M_COMET_PUNCH, que "suenan a
+// batalla Pokémon", fuera de tono para un dungeon crawler). Se reutiliza tal
+// cual -- no hay SE dedicado a "criatura te muerde" en el pool del juego
+// base, y sería préstamo por FUNCIÓN (un golpe seco), no por objeto directo.
+// NOTA para otra tarea: esto NO arregla que el resto de SIMA (pasos,
+// arma, muerte, escaleras) siga sin un solo efecto de sonido -- ver el
+// informe de esta tarea.
+#define SIMA_HIT_SE SE_WALL_HIT
+
 // Ataque (Tarea 7). sWeaponActive es la misma guarda de presupuesto de
 // sprites que sPlayerActive (por si CreateSprite se queda sin hueco).
 // sAttackTimer en 0 significa "sin golpe en curso"; 1..ATTACK_TOTAL_FRAMES
@@ -445,6 +512,8 @@ static void AdvanceEnemyStepPhase(void);
 static void UpdatePlayerDeath(void);
 static void UpdatePlayerTeleport(void);
 static void ResetPlayerAfterDeath(void);
+static void AdvanceHitstop(void);
+static void UpdatePlayerDying(void);
 
 // Función pura (turnos): la casilla a la que el jugador se movería un paso
 // desde (x, y) [casillas de sala, no píxeles] mirando `facing`. Separada del
@@ -508,6 +577,18 @@ u8 SimaActors_GetPlayerHP(void)
 bool8 SimaActors_IsPlayerDead(void)
 {
     return sPlayerHP == 0;
+}
+
+// Función pura (tarea de "damage feel"): ¿debería un contacto de enemigo
+// hacer daño AHORA, dado que quedan `invulnTurnsRemaining` turnos de
+// inmunidad? Aislada en su propia función de una línea, mismo criterio que
+// SimaActors_StairsUnlocked -- la regla es tan simple que cabría inline en
+// StartEnemyTurn, pero separarla es lo que le permite al harness in-ROM
+// comprobar la frontera exacta (0 daña, cualquier valor > 0 no) sin turno en
+// marcha, igual que SimaActors_EnemyShouldChase con el rango de detección.
+bool8 SimaActors_ContactShouldDamage(u8 invulnTurnsRemaining)
+{
+    return invulnTurnsRemaining == 0;
 }
 
 // Funciones puras (tarea de animacion): traducen un cronometro de estado
@@ -613,12 +694,17 @@ void SimaActors_InitPlayer(u8 floor)
     // ajustar aquí si un piso concreto pide entrar mirando al otro lado.
     sPlayerFacing = SIMA_FACING_RIGHT;
     sPlayerMoving = FALSE;
+    sTurnGraceActive = FALSE;   // tarea de sensación: sin margen de giro en curso
+    sTurnGraceTimer = 0;
     sPlayerAnimStep = 0;
     sPlayerAnimTimer = 0;
     sPlayerIdleAnimStep = 0;    // tarea de animacion: ciclo idle, arranca en el primer frame
     sPlayerIdleAnimTimer = 0;
     sPlayerHP = SIMA_PLAYER_MAX_HP;   // vida solo se fija al montar el modo, no en cada piso (ver WarpToFloor)
     sPlayerInvulnTimer = 0;
+    sPlayerInvulnTurns = 0;     // tarea de "damage feel": sin proteccion por turnos al arrancar
+    sHitstopTimer = 0;          // tarea de "damage feel": sin congelacion de impacto en curso
+    sPendingDeath = FALSE;
     sPlayerDeathTimer = 0;      // tarea de animacion: sin animacion de muerte en curso
     sPlayerTeleportTimer = 0;   // tarea de animacion: sin animacion de teleport en curso
     sAttackTimer = 0;   // sin golpe en curso (Tarea 7)
@@ -647,7 +733,12 @@ void SimaActors_InitPlayer(u8 floor)
     // Paleta ya cargada arriba (sPal_SimaPlayer); LoadSpritePalette es
     // idempotente por tag, pero el arma ni la vuelve a pedir -- reutiliza la
     // misma carga del jugador via paletteTag en sTmpl_SimaWeapon.
-    sWeaponSpriteId = CreateSprite(&sTmpl_SimaWeapon, sPlayerX + 8, sPlayerY + 8, 0);
+    // Centro en (sPlayerX+8, sPlayerY): para un sprite de 16x32 eso deja su
+    // top-left en (sPlayerX, sPlayerY-16) -- base alineada con la fila del
+    // jugador, mitad superior en la fila de arriba (ver UpdateAttack, que lo
+    // recoloca cada frame; esta posición inicial solo importa mientras arranca
+    // invisible).
+    sWeaponSpriteId = CreateSprite(&sTmpl_SimaWeapon, sPlayerX + 8, sPlayerY, 0);
     sWeaponActive = (sWeaponSpriteId != MAX_SPRITES);
     if (sWeaponActive)
         gSprites[sWeaponSpriteId].invisible = TRUE;
@@ -671,6 +762,8 @@ void SimaActors_WarpToFloor(u8 floor)
     sPlayerY = (s16)spawnY * SIMA_TILE_PX;
     sPlayerFacing = SIMA_FACING_RIGHT;   // mismo valor por defecto que SimaActors_InitPlayer, ver su comentario
     sPlayerMoving = FALSE;
+    sTurnGraceActive = FALSE;   // tarea de sensación: tampoco se arrastra un margen de giro entre pisos
+    sTurnGraceTimer = 0;
     sPlayerAnimStep = 0;
     sPlayerAnimTimer = 0;
     sPlayerIdleAnimStep = 0;
@@ -680,7 +773,8 @@ void SimaActors_WarpToFloor(u8 floor)
     // otros dos. El golpe/parpadeo sí se corta: no tiene sentido arrastrar
     // frames de "acabo de recibir un golpe" al piso nuevo.
     sPlayerInvulnTimer = 0;
-    // Golpe/deslizamiento/empujon/muerte/teleport en curso tampoco se
+    sPlayerInvulnTurns = 0;   // tampoco se arrastra proteccion por turnos al piso nuevo, misma razon
+    // Golpe/deslizamiento/empujon/muerte/teleport/hitstop en curso tampoco se
     // arrastran al piso nuevo, misma razon: aparecer en el spawn nuevo a
     // mitad de una animacion de un piso distinto seria confuso. El turno
     // vuelve siempre a PLAYER_INPUT.
@@ -689,6 +783,8 @@ void SimaActors_WarpToFloor(u8 floor)
     sPlayerKnockbackTimer = 0;
     sPlayerDeathTimer = 0;
     sPlayerTeleportTimer = 0;
+    sHitstopTimer = 0;
+    sPendingDeath = FALSE;
     sTurnPhase = SIMA_TURN_PLAYER_INPUT;
     if (sWeaponActive)
         gSprites[sWeaponSpriteId].invisible = TRUE;
@@ -740,35 +836,124 @@ void SimaActors_UpdatePlayer(void)
         // SimaActors_IsTeleportAnimDone() se cumpla.
         UpdatePlayerTeleport();
         break;
+    case SIMA_TURN_HITSTOP:
+        // Congelacion de impacto (tarea de "damage feel"): nada se dibuja
+        // de nuevo aqui a proposito -- el sprite se queda EXACTAMENTE con el
+        // frame/posicion que tenia en el instante del golpe (ya pintado por
+        // UpdatePlayerSlide/UpdateAttack antes de llamar a StartEnemyTurn),
+        // ese es el punto de un frenazo. AdvanceHitstop solo cuenta frames y
+        // decide a que fase se sigue cuando termine.
+        AdvanceHitstop();
+        break;
+    case SIMA_TURN_PLAYER_DYING:
+        // Golpe mortal (tarea de "damage feel", encargo del dueño): la
+        // reaccion al golpe (animacion de daño) termina de reproducirse
+        // ANTES del derrumbe -- ver el comentario grande junto a
+        // StartEnemyTurn y a UpdatePlayerDying.
+        UpdatePlayerDying();
+        break;
     }
+}
+
+// Función pura (tarea de sensación "mantener para caminar"): la decisión
+// TURN/WAIT/WALK del eje horizontal. Ver el comentario junto a su
+// declaración en sima.h para la tabla de casos completa; aquí solo una nota
+// de implementación: *graceActive/*graceTimer son sTurnGraceActive/
+// sTurnGraceTimer cuando la llama UpdatePlayerInput (más abajo) -- pasados
+// por referencia para que el harness in-ROM pueda simularlos con variables
+// locales, sin tocar el estado real del jugador.
+u8 SimaActors_ResolveHorizInput(u8 facing, u8 horizDir, bool8 *graceActive, u8 *graceTimer)
+{
+    if (facing != horizDir)
+    {
+        // Mira al lado contrario de lo que se pulsa: gira YA (quien llama
+        // debe asignar facing = horizDir) y arranca el margen desde cero --
+        // una dirección nueva siempre reinicia el margen, sin importar en
+        // qué estado estuviera antes.
+        *graceActive = TRUE;
+        *graceTimer = 0;
+        return SIMA_HORIZ_INPUT_TURN;
+    }
+
+    if (*graceActive)
+    {
+        // Ya mira hacia horizDir porque ACABA de girar hacia aquí (no
+        // porque ya miraba antes de que se empezara a pulsar): sigue
+        // dentro del margen mientras el contador no llegue a
+        // SIMA_TURN_GRACE_FRAMES.
+        (*graceTimer)++;
+        if (*graceTimer < SIMA_TURN_GRACE_FRAMES)
+            return SIMA_HORIZ_INPUT_WAIT;
+
+        // Margen superado sin soltar: se acaba (no se vuelve a esperar
+        // mientras se siga pulsando de aquí en adelante) y arranca a
+        // caminar.
+        *graceActive = FALSE;
+        return SIMA_HORIZ_INPUT_WALK;
+    }
+
+    // Ya miraba hacia horizDir SIN margen pendiente: o nunca hizo falta
+    // girar (ya apuntaba para aquí antes de este toque), o el margen se
+    // agotó en un frame anterior. Camina de inmediato.
+    return SIMA_HORIZ_INPUT_WALK;
 }
 
 // SIMA_TURN_PLAYER_INPUT: lee A (ataque) y D-pad.
 //
-// ARRIBA/ABAJO usan JOY_HELD, no JOY_NEW -- decision deliberada (de antes de
-// esta tarea): mantener pulsada una direccion camina turno tras turno a su
-// cadencia natural (cada turno solo avanza cuando el anterior termina del
-// todo, asi que HELD no puede "colar" un segundo paso a mitad de uno ya en
-// marcha), en vez de exigir soltar y volver a pulsar por cada casilla.
+// ARRIBA/ABAJO usan JOY_HELD: mantener pulsada una dirección camina turno
+// tras turno a su cadencia natural (cada turno solo avanza cuando el
+// anterior termina del todo, así que HELD no puede "colar" un segundo paso
+// a mitad de uno ya en marcha), en vez de exigir soltar y volver a pulsar
+// por cada casilla. No hay mirada vertical que cambiar, así que en este eje
+// no hay nada que girar.
 //
-// IZQUIERDA/DERECHA (tap-to-turn, tarea de sensación) usan JOY_NEW, NO
-// JOY_HELD -- a proposito, y NO es la misma decision que arriba: con
-// JOY_HELD, el frame en el que el jugador gira (sPlayerFacing cambia) y el
-// frame en el que "ya miraba hacia ahi" son ambos parte del MISMO toque
-// fisico si se mantiene pulsado mas de 1 frame (¡practicamente siempre! un
-// frame a 60Hz dura ~16ms) -- el turno se colaria en un
-// movimiento en el frame inmediatamente siguiente sin que el jugador soltara
-// el boton, y "un toque para girar, sin moverte" (el punto entero de este
-// cambio) dejaria de ser posible en la practica. Con JOY_NEW, cada
-// PULSACION FISICA discreta (soltar y volver a pulsar) es un evento propio:
-// la primera pulsacion en una direccion nueva SOLO gira; hace falta soltar y
-// pulsar de nuevo para que la segunda, ya mirando hacia ahi, mueva.
+// IZQUIERDA/DERECHA (tap-to-turn + mantener para caminar, TAREA DE
+// SENSACIÓN "arreglo de mantener pulsado", esta) también usan JOY_HELD,
+// pero con un margen de por medio -- SimaActors_ResolveHorizInput,
+// SIMA_TURN_GRACE_FRAMES en sima.h.
 //
-// A si sigue usando JOY_NEW (igual que antes de esta tarea): mantenerlo
+// HISTORIA (por qué esto no era tan simple como cambiar JOY_NEW por
+// JOY_HELD): la versión anterior de tap-to-turn (tarea de vista de perfil)
+// usaba JOY_NEW aquí a propósito, porque con JOY_HELD el frame en que el
+// jugador gira (sPlayerFacing cambia) y el frame en el que "ya mira hacia
+// ahí" son ambos parte del MISMO toque físico en cuanto se mantiene pulsado
+// más de 1 frame -- ¡prácticamente siempre! un frame a 60Hz dura ~16ms: el
+// turno se colaba en un movimiento al frame siguiente sin que el jugador
+// soltara el botón, y "un toque para girar, sin moverte" dejaba de ser
+// posible en la práctica. El parche (JOY_NEW) arreglaba eso, pero como
+// efecto secundario exigía soltar y repulsar por cada casilla al caminar de
+// lado -- rígido, e inconsistente con arriba/abajo (que sí se podían
+// mantener). Reportado por el dueño del proyecto, arreglado en esta tarea.
+//
+// LA SOLUCIÓN: separar el EVENTO de girar (instantáneo, en cuanto
+// facing != dirección pulsada) del EVENTO de empezar a caminar (retrasado
+// un margen corto). Es, en espíritu, la misma separación que resuelve
+// girar-vs-caminar en el overworld de pokeemerald -- ver
+// CheckMovementInputNotOnBike/PlayerNotOnBikeTurningInPlace en
+// src/field_player_avatar.c, que también distinguen "cambiaste de
+// dirección" (TURN_DIRECTION, un frame quieto) de "sigues en la misma"
+// (MOVING) -- aunque SIN copiar su timing exacto: allí SIEMPRE se mueve
+// exactamente un frame después de girar (no hay concepto de "toque puro que
+// nunca mueve"), aquí SÍ hace falta que un toque corto pueda soltarse sin
+// haber movido nunca, de ahí el margen en vez de un solo frame fijo.
+// SimaActors_ResolveHorizInput hace esa distinción de forma pura (ver su
+// comentario en sima.h); aquí solo se aplica el resultado:
+//   - TURN: gira, no mueve, no consume turno (el margen acaba de arrancar).
+//   - WAIT: ya giró hacia ahí hace poco, sigue dentro del margen: ni gira
+//     (nada que girar) ni mueve. Si el jugador suelta el botón en este
+//     punto (rama sin input, más abajo, que cancela el margen), se quedó en
+//     "solo giró" -- el toque corto que pide el brief.
+//   - WALK: o ya miraba hacia horizDir antes de pulsar (mueve de
+//     inmediato), o el margen se acaba de agotar sin soltar (empieza a
+//     caminar). Cae al mismo código de mover de más abajo, compartido con
+//     arriba/abajo.
+//
+// A sigue usando JOY_NEW (igual que antes de esta tarea): mantenerlo
 // pulsado no encadena golpes.
 static void UpdatePlayerInput(void)
 {
     u8 moveDir;
+    u8 horizDir;
     s8 curX, curY, nextX, nextY;
 
     // Ciclo idle (tarea de animacion): corre TODOS los frames en que el
@@ -786,6 +971,10 @@ static void UpdatePlayerInput(void)
 
     if (JOY_NEW(A_BUTTON))
     {
+        // Un ataque nuevo corta cualquier margen de giro a medias: son dos
+        // acciones distintas, el margen no debería sobrevivir a un golpe de
+        // por medio.
+        sTurnGraceActive = FALSE;
         sAttackFacing = sPlayerFacing;
         sAttackTimer = 1;
         sTurnPhase = SIMA_TURN_PLAYER_ATTACK;
@@ -796,43 +985,44 @@ static void UpdatePlayerInput(void)
 
     if (JOY_HELD(DPAD_UP))
     {
+        sTurnGraceActive = FALSE;   // eje distinto: no arrastra un margen horizontal pendiente
         moveDir = SIMA_FACING_UP;   // vertical: mueve de inmediato, sPlayerFacing no cambia
     }
     else if (JOY_HELD(DPAD_DOWN))
     {
+        sTurnGraceActive = FALSE;
         moveDir = SIMA_FACING_DOWN;
     }
-    else if (JOY_NEW(DPAD_LEFT))
+    else if (JOY_HELD(DPAD_LEFT) || JOY_HELD(DPAD_RIGHT))
     {
-        if (sPlayerFacing != SIMA_FACING_LEFT)
+        horizDir = JOY_HELD(DPAD_LEFT) ? SIMA_FACING_LEFT : SIMA_FACING_RIGHT;
+
+        switch (SimaActors_ResolveHorizInput(sPlayerFacing, horizDir, &sTurnGraceActive, &sTurnGraceTimer))
         {
-            // Primera pulsación física hacia este lado: solo gira, no
-            // consume turno. Ver el comentario de cabecera de esta función
-            // sobre por qué esto necesita JOY_NEW y no JOY_HELD.
-            sPlayerFacing = SIMA_FACING_LEFT;
+        case SIMA_HORIZ_INPUT_TURN:
+            // Gira ya mismo, no consume turno -- ver el comentario de
+            // cabecera de esta función.
+            sPlayerFacing = horizDir;
             sPlayerMoving = FALSE;
             UpdatePlayerSprite();
             return;
-        }
-        moveDir = SIMA_FACING_LEFT;   // ya miraba a la izquierda: esta pulsación mueve
-    }
-    else if (JOY_NEW(DPAD_RIGHT))
-    {
-        if (sPlayerFacing != SIMA_FACING_RIGHT)
-        {
-            sPlayerFacing = SIMA_FACING_RIGHT;
+        case SIMA_HORIZ_INPUT_WAIT:
+            // Dentro del margen: ni gira (ya giró) ni mueve todavía.
             sPlayerMoving = FALSE;
             UpdatePlayerSprite();
             return;
+        default:   // SIMA_HORIZ_INPUT_WALK
+            moveDir = horizDir;
+            break;
         }
-        moveDir = SIMA_FACING_RIGHT;
     }
     else
     {
-        // Nada pulsado (o LEFT/RIGHT en HELD pero no en el frame de flanco
-        // de subida que exige JOY_NEW): nadie se mueve ni se gira. Es el
-        // caso que demuestra que el turno funciona -- ver la verificacion
-        // por memoria del informe de esta tarea.
+        // Nada pulsado: cancela cualquier margen de giro a medias -- soltar
+        // antes de que se agote es, literalmente, "solo giraste" (el toque
+        // corto que pide el brief). La mirada NO se deshace: girar es
+        // gratis y permanente, solo caminar necesitaba el margen.
+        sTurnGraceActive = FALSE;
         sPlayerMoving = FALSE;
         UpdatePlayerSprite();
         return;
@@ -999,6 +1189,15 @@ static void AdvancePlayerKnockback(void)
 //      cortarla por un nuevo movimiento.
 //   4. MOVIÉNDOSE (sPlayerMoving) -- ciclo de caminar.
 //   5. QUIETO -- ciclo idle.
+//
+// Golpe mortal (tarea de "damage feel"): SIMA_TURN_PLAYER_DYING NO tiene su
+// propia rama aquí -- no hace falta. Durante esa fase sPlayerInvulnTimer
+// sigue siendo > 0 (UpdatePlayerDying lo decrementa, ver su comentario), así
+// que cae solo en la rama 3 (GOLPE) de más arriba y muestra exactamente la
+// misma reacción que un golpe no mortal. En el frame exacto en que se agota
+// y sTurnPhase pasa a SIMA_TURN_PLAYER_DEAD, la siguiente llamada ya entra
+// por la rama 1 -- la transición daño -> muerte queda cubierta por las
+// prioridades que ya existían, sin un caso especial nuevo.
 static void UpdatePlayerSprite(void)
 {
     struct Sprite *sprite = &gSprites[sPlayerSpriteId];
@@ -1067,6 +1266,51 @@ static void UpdatePlayerTeleport(void)
     UpdatePlayerSprite();
 }
 
+// Congelación de impacto (tarea de "damage feel"): cuenta sHitstopTimer
+// hacia 0 sin tocar ningún sprite (ver el comentario del case en
+// SimaActors_UpdatePlayer) y, al agotarse, decide a qué fase sigue --
+// sPendingDeath es la ÚNICA diferencia entre un golpe normal (a
+// SIMA_TURN_ENEMY_STEP, el turno de los enemigos que StartEnemyTurn ya dejó
+// calculado) y uno mortal (a SIMA_TURN_PLAYER_DYING, ver UpdatePlayerDying
+// justo abajo).
+static void AdvanceHitstop(void)
+{
+    if (sHitstopTimer > 0)
+        sHitstopTimer--;
+
+    if (sHitstopTimer == 0)
+        sTurnPhase = sPendingDeath ? SIMA_TURN_PLAYER_DYING : SIMA_TURN_ENEMY_STEP;
+}
+
+// Golpe mortal (tarea de "damage feel", encargo del dueño del proyecto:
+// "primero la animación de DAÑO, y después la de MUERTE" -- antes, al
+// llegar a 0 de vida, StartEnemyTurn saltaba directo a SIMA_TURN_PLAYER_DEAD
+// y la reacción al golpe nunca llegaba a verse, porque UpdatePlayerSprite
+// prioriza MUERTE por encima de GOLPE, ver su comentario grande). Esta fase
+// es el puente: dura exactamente lo mismo que un golpe normal tarda en
+// reproducir sus 5 frames (sPlayerInvulnTimer, el MISMO reloj de siempre --
+// aquí es esta función, no SimaActors_UpdateEnemies, quien lo decrementa
+// mientras esta fase esté activa, para no contarlo dos veces en el mismo
+// frame, ver el guard en SimaActors_UpdateEnemies) y, al agotarse, arranca
+// el derrumbe de siempre (SIMA_TURN_PLAYER_DEAD/sPlayerDeathTimer, sin
+// cambios). Sin input posible de por medio en ningún punto de la cadena
+// hitstop -> daño -> muerte: ninguna de esas tres fases lee el D-pad/A
+// (SimaActors_UpdatePlayer solo llama a UpdatePlayerInput en
+// SIMA_TURN_PLAYER_INPUT).
+static void UpdatePlayerDying(void)
+{
+    if (sPlayerInvulnTimer > 0)
+    {
+        sPlayerInvulnTimer--;
+    }
+    else
+    {
+        sPlayerDeathTimer = 0;
+        sTurnPhase = SIMA_TURN_PLAYER_DEAD;
+    }
+    UpdatePlayerSprite();
+}
+
 bool8 SimaActors_IsDeathAnimDone(void)
 {
     return sTurnPhase == SIMA_TURN_PLAYER_DEAD
@@ -1115,11 +1359,14 @@ static void ResetPlayerAfterDeath(void)
     sPlayerIdleAnimTimer = 0;
     sPlayerHP = SIMA_PLAYER_MAX_HP;   // a diferencia de WarpToFloor: morir SÍ restaura la vida
     sPlayerInvulnTimer = 0;
+    sPlayerInvulnTurns = 0;   // reinicio del intento: sin proteccion arrastrada del golpe que mato al jugador
     sPlayerDeathTimer = 0;
     sPlayerTeleportTimer = 0;
     sAttackTimer = 0;
     sPlayerSlideTimer = 0;
     sPlayerKnockbackTimer = 0;
+    sHitstopTimer = 0;
+    sPendingDeath = FALSE;
     sTurnPhase = SIMA_TURN_PLAYER_INPUT;   // el turno queda coherente: listo para leer input de nuevo
     if (sWeaponActive)
         gSprites[sWeaponSpriteId].invisible = TRUE;
@@ -1138,14 +1385,17 @@ static void ResetPlayerAfterDeath(void)
 // través de AttackHitboxActive, nunca lo toca. Al terminar (recuperación
 // cumplida), el golpe consume el turno: le toca a los enemigos.
 //
-// Tarea de sensación: sAttackFacing ya SOLO puede ser LEFT/RIGHT (copia de
-// sPlayerFacing, ver la cabecera del archivo), así que esta función ya NO
-// decide el eje del arco -- siempre usa el par horizontal
-// (FRAME_WEAPON_HORIZ_A/B). El par vertical (FRAME_WEAPON_VERT_A/B) queda
-// sin usar, ver el comentario grande sobre WEAPON_SHEET_FRAMES.
+// sAttackFacing solo puede ser LEFT/RIGHT (copia de sPlayerFacing, ver la
+// cabecera del archivo); la dirección se resuelve con un HFLIP de OAM sobre el
+// arte de izquierda (ver el comentario grande sobre WEAPON_SHEET_FRAMES).
 static void UpdateAttack(void)
 {
-    s16 hitX, hitY;
+    // Los 4 frames que se ven durante la ventana ACTIVA, en orden: el arco de
+    // tajo barriendo hacia abajo y el reposo/follow-through. El índice se
+    // satura al último por si algún día ATTACK_ACTIVE_FRAMES pasa de 4.
+    static const u8 sSwingFrame[4] = {
+        FRAME_WEAPON_ARC1, FRAME_WEAPON_ARC2, FRAME_WEAPON_ARC3, FRAME_WEAPON_REST,
+    };
     bool8 hFlip;
 
     if (!sWeaponActive)
@@ -1159,39 +1409,43 @@ static void UpdateAttack(void)
         return;
     }
 
-    SimaActors_WeaponHitbox(sAttackFacing, sPlayerX, sPlayerY, &hitX, &hitY);
-    // El arco se dibuja CENTRADO en la casilla golpeada, sin desplazamiento
-    // -- a diferencia de la espada diagonal (ver el historial de esta
-    // función), aquí la posición sola ya comunica "esta es la casilla", así
-    // que cualquier bamboleo solo restaría precisión al mensaje.
-    gSprites[sWeaponSpriteId].x = hitX + 8;
-    gSprites[sWeaponSpriteId].y = hitY + 8;
+    // La espada la SOSTIENE el jugador: se ancla a su posición, NO a la casilla
+    // golpeada (esa la lee el daño en SimaActors_UpdateEnemies, aparte). Centro
+    // en (sPlayerX+8, sPlayerY): para el sprite de 16x32 eso deja la base sobre
+    // la fila del jugador y la mitad alzada en la de arriba (ver el comentario
+    // grande sobre WEAPON_SHEET_FRAMES).
+    gSprites[sWeaponSpriteId].x = sPlayerX + 8;
+    gSprites[sWeaponSpriteId].y = sPlayerY;
 
-    // Orientación: un solo flip de OAM (masa nativa del arco a la derecha --
-    // ver el comentario grande sobre WEAPON_SHEET_FRAMES -- se voltea para
-    // IZQUIERDA). Ya no hace falta decidir el eje: siempre es horizontal.
-    hFlip = (sAttackFacing == SIMA_FACING_LEFT);
+    // El arte mira a la IZQUIERDA; se voltea para DERECHA. El flip es sobre el
+    // centro del sprite (columna del jugador), así que la espada queda simétrica
+    // a ambos lados.
+    hFlip = (sAttackFacing == SIMA_FACING_RIGHT);
     gSprites[sWeaponSpriteId].oam.matrixNum = hFlip ? ST_OAM_HFLIP : 0;
 
     if (sAttackTimer <= ATTACK_WINDUP_FRAMES)
     {
-        // Windup: el arma ya se ve (telégrafo del golpe) pero todavía no daña.
+        // Windup: espada alzada, telégrafo del golpe; todavía no daña.
         gSprites[sWeaponSpriteId].invisible = FALSE;
         gSprites[sWeaponSpriteId].oam.tileNum = gSprites[sWeaponSpriteId].sheetTileStart
-            + FRAME_WEAPON_HORIZ_A;
+            + FRAME_WEAPON_RAISED;
     }
     else if (sAttackTimer <= ATTACK_WINDUP_FRAMES + ATTACK_ACTIVE_FRAMES)
     {
-        // Activo: variante de impacto, y AttackHitboxActive (usado por
-        // SimaActors_UpdateEnemies) empieza a devolver TRUE en esta misma
-        // ventana -- ver la comprobación exacta ahí, es el mismo rango.
+        // Activo: el arco barre hacia abajo y remata en reposo, en sincronía con
+        // AttackHitboxActive (usado por SimaActors_UpdateEnemies), que devuelve
+        // TRUE en este mismo rango de sAttackTimer -- el daño cae mientras se ve
+        // el arco.
+        u8 idx = sAttackTimer - ATTACK_WINDUP_FRAMES - 1;  // 0..ACTIVE-1
+        if (idx > 3)
+            idx = 3;
         gSprites[sWeaponSpriteId].invisible = FALSE;
         gSprites[sWeaponSpriteId].oam.tileNum = gSprites[sWeaponSpriteId].sheetTileStart
-            + FRAME_WEAPON_HORIZ_B;
+            + sSwingFrame[idx];
     }
     else
     {
-        // Recuperación: el arma ya se guardó, pero el golpe sigue en curso
+        // Recuperación: la espada ya se guardó, pero el golpe sigue en curso
         // (el turno todavía no ha pasado a los enemigos) hasta que
         // sAttackTimer llegue a ATTACK_TOTAL_FRAMES.
         gSprites[sWeaponSpriteId].invisible = TRUE;
@@ -1207,9 +1461,8 @@ static void UpdateAttack(void)
 
 // Función pura (Tarea 7): ¿está la caja de golpe del arma activa AHORA
 // MISMO? Envuelve el mismo rango de sAttackTimer que UpdateAttack usa para
-// elegir el frame de impacto (FRAME_WEAPON_HORIZ_B, el único par que se usa
-// desde la vista de perfil pura), para que ambas lecturas de "¿está
-// golpeando?" nunca se puedan desincronizar (una sola definición de la
+// mostrar los frames del arco (ventana ACTIVA), para que ambas lecturas de
+// "¿está golpeando?" nunca se puedan desincronizar (una sola definición de la
 // ventana activa).
 // No pura respecto al reloj de la partida (lee sAttackTimer, estado), pero
 // no depende de sprites ni de ningún enemigo -- SimaActors_UpdateEnemies la
@@ -1653,11 +1906,30 @@ void SimaActors_ResetAfterDeath(u8 floor)
 //     por turno, sPlayerHitThisTurn) y empuja al jugador (StartPlayerKnockback).
 //   - destino == su propia casilla    -> bloqueado (o deambulando quieto), se queda.
 //   - cualquier otro destino          -> movimiento real: arranca su deslizamiento.
+//
+// Inmunidad por TURNOS (tarea de "damage feel"): `immuneThisTurn` se captura
+// UNA vez, ANTES del bucle -- con SimaActors_ContactShouldDamage sobre el
+// valor de sPlayerInvulnTurns tal como entra a este turno -- y se usa para
+// los tres enemigos por igual (nunca se reevalúa a mitad del bucle). El
+// contador se decrementa aquí mismo, también antes del bucle: cada llamada a
+// StartEnemyTurn ES un turno de enemigos que se resuelve, así que "consumir
+// un turno de protección" significa restar 1 la primera vez que se entra
+// aquí con el contador todavía > 0. Si en este mismo turno un enemigo SÍ
+// conecta (solo puede pasar cuando immuneThisTurn era FALSE al entrar),
+// sPlayerInvulnTurns se vuelve a fijar a SIMA_HIT_INVULN_TURNS para los
+// turnos que vengan -- nunca en el turno que se acaba de decrementar, así
+// que un golpe siempre compra como mínimo SIMA_HIT_INVULN_TURNS turnos
+// completos de protección real (verificado por memoria, ver el informe de
+// esta tarea).
 static void StartEnemyTurn(void)
 {
     u8 i;
     s8 px = (s8)(sPlayerX / SIMA_TILE_PX);
     s8 py = (s8)(sPlayerY / SIMA_TILE_PX);
+    bool8 immuneThisTurn = !SimaActors_ContactShouldDamage(sPlayerInvulnTurns);
+
+    if (sPlayerInvulnTurns > 0)
+        sPlayerInvulnTurns--;
 
     sPlayerHitThisTurn = FALSE;
     sEnemyStepTimer = 0;
@@ -1687,22 +1959,21 @@ static void StartEnemyTurn(void)
 
         if (nx == px && ny == py)
         {
-            // Ataque: el paso del enemigo aterriza en la casilla del
-            // jugador. No se mueve el sprite del enemigo -- solo el jugador
-            // retrocede, vía knockback. Un solo golpe por turno
-            // (sPlayerHitThisTurn) Y, desde la tarea de animación, ninguno
-            // en absoluto mientras el golpe anterior siga en su ventana de
-            // invulnerabilidad (sPlayerInvulnTimer > 0 -- ver el comentario
-            // grande junto a esa variable sobre por qué). Si el golpe se
-            // descarta por cualquiera de las dos razones, el enemigo
-            // simplemente se queda plantado ahí este turno (no avanza más,
-            // no hace nada) -- no es un bug, es la misma regla "adyacente no
-            // te deja pasar" de siempre, solo que sin efecto.
-            if (!sPlayerHitThisTurn && sPlayerInvulnTimer == 0)
+            // Ataque: el paso del enemigo aterriza en la casilla del jugador.
+            // No se mueve el sprite del enemigo -- solo el jugador retrocede,
+            // vía knockback. Un solo golpe por turno (sPlayerHitThisTurn) Y,
+            // con la inmunidad por TURNOS, ninguno mientras `immuneThisTurn`
+            // (capturado ANTES del decremento de sPlayerInvulnTurns, arriba).
+            // Si el golpe se descarta por cualquiera de las dos razones, el
+            // enemigo se queda plantado ahí este turno (no avanza, no hace
+            // nada) -- la misma regla "adyacente no te deja pasar" sin efecto.
+            if (!sPlayerHitThisTurn && !immuneThisTurn)
             {
                 sPlayerHP = SimaActors_ApplyDamage(sPlayerHP, SIMA_ENEMY_CONTACT_DAMAGE);
-                sPlayerInvulnTimer = SIMA_HIT_INVULN_FRAMES;
+                sPlayerInvulnTurns = SIMA_HIT_INVULN_TURNS;   // proteccion por turnos (regla de juego)
+                sPlayerInvulnTimer = SIMA_HIT_INVULN_FRAMES;  // reloj del flash de daño (solo visual)
                 StartPlayerKnockback(ex, ey);
+                PlaySE(SIMA_HIT_SE);   // sonido del golpe (tarea de "damage feel")
                 sPlayerHitThisTurn = TRUE;
             }
         }
@@ -1718,22 +1989,19 @@ static void StartEnemyTurn(void)
         // (sEnemyMoving[i] ya es FALSE).
     }
 
-    // Muerte (tarea de animación): SimaActors_IsPlayerDead() -- expuesta
-    // desde la Tarea 6 pero nadie la llamaba hasta ahora -- se comprueba
-    // AQUÍ, justo después de resolver todos los golpes de este turno. Si el
-    // jugador acaba de llegar a 0 de vida, el turno NO pasa a
-    // SIMA_TURN_ENEMY_STEP: cualquier sEnemyMoving[i] que se haya dejado
-    // marcado arriba se queda sin resolver (inofensivo -- ver
-    // ResetEnemiesAfterDeath, que va a recolocar a TODOS los enemigos de
-    // todos modos en cuanto termine el fundido) y el empujón que acabe de
-    // arrancar (StartPlayerKnockback, arriba) se descarta sin más: morir
-    // corta cualquier otro efecto visual a medias, la animación de muerte es
-    // lo único que se ve a partir de aquí.
-    if (SimaActors_IsPlayerDead())
+    // Encadenado hitstop -> (daño | muerte) de la tarea de "damage feel": si
+    // algún enemigo conectó este turno, TODO se congela SIMA_HITSTOP_FRAMES
+    // (SIMA_TURN_HITSTOP) ANTES de reproducir el empujón/deslizamientos ya
+    // calculados arriba. sPendingDeath decide a dónde salta AdvanceHitstop al
+    // terminar: golpe mortal -> SIMA_TURN_PLAYER_DYING (primero la reacción de
+    // daño, DESPUÉS la muerte), golpe normal -> SIMA_TURN_ENEMY_STEP (sigue el
+    // turno de los enemigos). Si NADIE golpeó, se va directo al turno de los
+    // enemigos, sin frenazo.
+    if (sPlayerHitThisTurn)
     {
-        sPlayerKnockbackTimer = 0;
-        sPlayerDeathTimer = 0;
-        sTurnPhase = SIMA_TURN_PLAYER_DEAD;
+        sHitstopTimer = SIMA_HITSTOP_FRAMES;
+        sPendingDeath = SimaActors_IsPlayerDead();
+        sTurnPhase = SIMA_TURN_HITSTOP;
     }
     else
     {
@@ -1741,9 +2009,10 @@ static void StartEnemyTurn(void)
     }
 }
 
-// Avanza un frame el deslizamiento de todos los enemigos en marcha. Al
-// llegar (sEnemyStepTimer == SIMA_ENEMY_SLIDE_FRAMES), snap exacto a la
-// casilla destino y el turno vuelve al jugador.
+// Avanza UN frame del deslizamiento de los enemigos durante su turno
+// (SIMA_TURN_ENEMY_STEP, ver SimaActors_UpdateEnemies, que es quien la llama).
+// Al cumplirse SIMA_ENEMY_SLIDE_FRAMES hace snap exacto a la casilla destino y
+// devuelve el turno al jugador (SIMA_TURN_PLAYER_INPUT).
 static void AdvanceEnemyStepPhase(void)
 {
     u8 i;
@@ -1778,21 +2047,25 @@ void SimaActors_UpdateEnemies(void)
     u8 i;
     // Golpe del jugador (Tarea 7): se calcula UNA vez por frame, no por
     // enemigo. Se comprueba TODOS los frames en que el arma está activa
-    // (SIMA_TURN_PLAYER_ATTACK, antes de que le toque mover a nadie) --
-    // igual que en la versión en tiempo real. Con turnos, la comparación es
-    // EXACTA por casilla (hitX/hitY y sEnemyX[i]/sEnemyY[i] son siempre
-    // múltiplos de SIMA_TILE_PX aquí: el arma solo se activa con el jugador
-    // quieto en SIMA_TURN_PLAYER_ATTACK, y ningún enemigo puede estar a
-    // medio deslizar mientras tanto porque son fases mutuamente
-    // excluyentes) en vez de la AABB de 12x12 que hacía falta con
-    // movimiento libre (BoxesOverlap, eliminada con esta tarea).
+    // (SIMA_TURN_PLAYER_ATTACK, antes de que le toque mover a nadie) -- igual
+    // que en la versión en tiempo real. Con turnos, la comparación es EXACTA
+    // por casilla (hitX/hitY y sEnemyX[i]/sEnemyY[i] son siempre múltiplos de
+    // SIMA_TILE_PX aquí: el arma solo se activa con el jugador quieto en
+    // SIMA_TURN_PLAYER_ATTACK, y ningún enemigo puede estar a medio deslizar
+    // mientras tanto porque son fases mutuamente excluyentes).
     bool8 attackHit = AttackHitboxActive();
     s16 hitX = 0, hitY = 0;
 
     if (attackHit)
         SimaActors_WeaponHitbox(sAttackFacing, sPlayerX, sPlayerY, &hitX, &hitY);
 
-    if (sPlayerInvulnTimer > 0)
+    // Reloj visual del flash de daño: se decrementa aquí en las fases "vivas".
+    // NO durante SIMA_TURN_HITSTOP (todo congelado, ni el reloj del golpe
+    // avanza -- ver el comentario junto a SIMA_HITSTOP_FRAMES) ni durante
+    // SIMA_TURN_PLAYER_DYING (ahí lo decrementa UpdatePlayerDying; no contarlo
+    // dos veces en el mismo frame -- ver su comentario).
+    if (sTurnPhase != SIMA_TURN_HITSTOP && sTurnPhase != SIMA_TURN_PLAYER_DYING
+        && sPlayerInvulnTimer > 0)
         sPlayerInvulnTimer--;
 
     // Respiración (cosmética): su propio reloj, siempre corriendo, no ligado

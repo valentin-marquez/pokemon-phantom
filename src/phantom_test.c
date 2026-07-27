@@ -430,6 +430,57 @@ static void Test_SimaAnimFrames(void)
     PHANTOM_ASSERT(SimaActors_TeleportAnimFrame(255) == 5, "sima-teleport-anim-saturates-beyond");
 }
 
+// Tarea de sensación ("mantener para caminar"): la decisión pura
+// TURN/WAIT/WALK de SimaActors_ResolveHorizInput, con variables locales en
+// vez de los estáticos reales del jugador (ver el comentario de la función
+// en sima.h) -- no hace falta un jugador ni sprites para ejercitar esto,
+// mismo espíritu que Test_SimaDamage/Test_SimaAnimFrames.
+static void Test_SimaHorizInput(void)
+{
+    bool8 graceActive;
+    u8 graceTimer;
+    u8 result, i;
+
+    // Mirar al lado contrario de lo que se pulsa: SIEMPRE gira y arranca el
+    // margen desde cero, sin importar el estado previo.
+    graceActive = FALSE;
+    graceTimer = 0;
+    result = SimaActors_ResolveHorizInput(SIMA_FACING_LEFT, SIMA_FACING_RIGHT, &graceActive, &graceTimer);
+    PHANTOM_ASSERT(result == SIMA_HORIZ_INPUT_TURN, "sima-horiz-turn-on-opposite");
+    PHANTOM_ASSERT(graceActive == TRUE, "sima-horiz-turn-starts-grace");
+    PHANTOM_ASSERT(graceTimer == 0, "sima-horiz-turn-resets-timer");
+
+    // Ya mirando hacia ahí, SIN margen pendiente (nunca hubo un giro
+    // reciente): camina de inmediato, no toca el margen -- "ya apuntabas
+    // ahí" del brief.
+    graceActive = FALSE;
+    graceTimer = 0;
+    result = SimaActors_ResolveHorizInput(SIMA_FACING_RIGHT, SIMA_FACING_RIGHT, &graceActive, &graceTimer);
+    PHANTOM_ASSERT(result == SIMA_HORIZ_INPUT_WALK, "sima-horiz-walk-when-already-facing");
+    PHANTOM_ASSERT(graceActive == FALSE, "sima-horiz-walk-leaves-grace-untouched");
+
+    // Toque corto: recién girado (graceActive TRUE, timer 0, como lo deja
+    // el caso TURN de arriba) y manteniendo pulsado SIMA_TURN_GRACE_FRAMES-1
+    // veces seguidas -- todavía dentro del margen, nunca llega a caminar.
+    graceActive = TRUE;
+    graceTimer = 0;
+    for (i = 0; i < SIMA_TURN_GRACE_FRAMES - 1; i++)
+        result = SimaActors_ResolveHorizInput(SIMA_FACING_RIGHT, SIMA_FACING_RIGHT, &graceActive, &graceTimer);
+    PHANTOM_ASSERT(result == SIMA_HORIZ_INPUT_WAIT, "sima-horiz-wait-inside-grace");
+    PHANTOM_ASSERT(graceActive == TRUE, "sima-horiz-grace-still-active-before-margin");
+
+    // Un frame más manteniéndolo pulsado (llega exactamente a
+    // SIMA_TURN_GRACE_FRAMES): el margen se agota y arranca a caminar.
+    result = SimaActors_ResolveHorizInput(SIMA_FACING_RIGHT, SIMA_FACING_RIGHT, &graceActive, &graceTimer);
+    PHANTOM_ASSERT(result == SIMA_HORIZ_INPUT_WALK, "sima-horiz-walk-past-margin");
+    PHANTOM_ASSERT(graceActive == FALSE, "sima-horiz-margin-consumed");
+
+    // Con el margen ya consumido, seguir manteniéndolo pulsado sigue
+    // caminando sin volver a esperar -- así se encadenan casillas.
+    result = SimaActors_ResolveHorizInput(SIMA_FACING_RIGHT, SIMA_FACING_RIGHT, &graceActive, &graceTimer);
+    PHANTOM_ASSERT(result == SIMA_HORIZ_INPUT_WALK, "sima-horiz-walk-keeps-walking");
+}
+
 void PhantomTest_Run(void)
 {
     PHANTOM_CHECKPOINT("suite-start");
@@ -453,6 +504,7 @@ void PhantomTest_Run(void)
     Test_SimaWeaponHitbox();
     Test_SimaEnemyShouldChase();
     Test_SimaAnimFrames();
+    Test_SimaHorizInput();
     PHANTOM_CHECKPOINT("suite-end");
     PhantomTest_Finish(gPhantomTestFailed);
 }

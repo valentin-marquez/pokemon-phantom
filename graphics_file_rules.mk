@@ -325,11 +325,12 @@ graphics/sima/bat.4bpp: %.4bpp: %.png
 graphics/sima/slime.4bpp: %.4bpp: %.png
 	$(GFX) $< $@ -mwidth 2 -mheight 2
 
-# weapon.png (Tarea 7): dos frames de 16x16 del mandoble del jugador
-# recortados de weapons.png (graphics/sima/gen.py, generate_weapon), mismo
-# formato OBJ que player_anim.4bpp/rat.4bpp de arriba.
+# weapon.png: cinco frames de 16x32 de la ESPADA del jugador, apilados en
+# vertical (graphics/sima/gen.py, generate_weapon). -mheight 4 (frente a los
+# -mheight 2 del resto de OBJ de 16x16) empaqueta cada frame de 16x32 en 8 tiles
+# de hardware CONTIGUOS -- formato OBJ, SPRITE_SIZE(16x32) en sima_actors.c.
 graphics/sima/weapon.4bpp: %.4bpp: %.png
-	$(GFX) $< $@ -mwidth 2 -mheight 2
+	$(GFX) $< $@ -mwidth 2 -mheight 4
 
 
 ### Miscellaneous ###

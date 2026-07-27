@@ -120,6 +120,45 @@ bool8 SimaActors_EnemyShouldChase(u8 manhattanDist);
 bool8 SimaActors_StairsUnlocked(u8 aliveEnemyCount);
 
 // ---------------------------------------------------------------------
+// Tarea de sensación "mantener para caminar" (izquierda/derecha): toque
+// corto = gira sobre sí mismo (tap-to-turn, gratis, no consume turno);
+// mantener pulsado, pasado un pequeño margen, camina y ENCADENA casillas
+// mientras se mantenga -- igual que arriba/abajo ya hacían. Ver el
+// comentario grande junto a UpdatePlayerInput en src/sima_actors.c para el
+// porqué (imita en espíritu el runningState de tres valores del overworld
+// en src/field_player_avatar.c -- CheckMovementInputNotOnBike/
+// PlayerNotOnBikeTurningInPlace -- sin copiar su timing exacto, que no
+// necesita un margen porque ahí SIEMPRE se mueve un frame después de girar).
+//
+// NÚMERO DE GUSTO, afinable jugando: cuántos frames de juego hay que
+// mantener pulsado, DESPUÉS de girar, antes de que arranque a caminar. A
+// 60Hz, 8 frames ~= 133ms: bastante por encima de un toque de un solo frame
+// de JOY_HELD (~16ms, el caso que rompía el tap-to-turn original -- ver el
+// comentario de UpdatePlayerInput), y bastante por debajo de lo que se
+// sentiría "perezoso" al mantener pulsado.
+#define SIMA_TURN_GRACE_FRAMES 8
+
+// Resultado de SimaActors_ResolveHorizInput, justo abajo.
+enum SimaHorizInputResult
+{
+    SIMA_HORIZ_INPUT_TURN,  // gira hacia horizDir: no mueve, no consume turno, arranca el margen
+    SIMA_HORIZ_INPUT_WAIT,  // ya girado hacia horizDir, dentro del margen: no gira (nada que girar), no mueve
+    SIMA_HORIZ_INPUT_WALK,  // mueve hacia horizDir: ya miraba hacia ahí, o el margen se acaba de superar
+};
+
+// Función pura: dados el facing actual del jugador y la dirección
+// horizontal pulsada ESTE frame, decide TURN/WAIT/WALK -- y avanza el
+// margen de giro a través de *graceActive/*graceTimer (la misma pareja que
+// sTurnGraceActive/sTurnGraceTimer en src/sima_actors.c, pasada por
+// referencia para poder simularla en el harness sin esos estáticos).
+// Separada de UpdatePlayerInput (que sí toca sprites/sPlayerFacing/el
+// turno) para que el harness in-ROM pueda ejercitar cada combinación de
+// facing/margen sin pulsar nada, igual que
+// SimaActors_PlayerStepTarget/ApplyDamage. Ver su implementación en
+// src/sima_actors.c para la tabla de casos completa.
+u8 SimaActors_ResolveHorizInput(u8 facing, u8 horizDir, bool8 *graceActive, u8 *graceTimer);
+
+// ---------------------------------------------------------------------
 // Animaciones del jugador (tarea de animacion): frames separados y nombrados
 // por el dueño del proyecto (graphics/sima/gen.py, generate_player_anim) --
 // idle/move/damage/dead/teleport. Las constantes de cadencia viven AQUI (no
@@ -134,6 +173,17 @@ bool8 SimaActors_StairsUnlocked(u8 aliveEnemyCount);
 // src/sima_actors.c sobre por que se fusionaron en esta tarea).
 #define SIMA_DAMAGE_ANIM_PERIOD 4   // frames de juego por frame de animacion
 #define SIMA_HIT_INVULN_FRAMES (5 * SIMA_DAMAGE_ANIM_PERIOD)   // 5 frames de elf-take-damage-look-right.png = 20
+
+// Invulnerabilidad como REGLA DE JUEGO, en TURNOS de enemigos (migracion
+// frames->turnos de la tarea de "damage feel"): cuantos turnos tras un golpe
+// el jugador sigue blindado de uno nuevo. SIMA_HIT_INVULN_FRAMES (arriba)
+// quedo como reloj PURAMENTE VISUAL del flash de daño; ESTE es la unica fuente
+// de verdad de "¿puede este contacto dañarme?" (ver sPlayerInvulnTurns /
+// SimaActors_ContactShouldDamage en src/sima_actors.c).
+// NUMERO DE GUSTO -- el #define original se perdio en la truncacion del
+// archivo y se REconstruyo: 1 = un turno completo de gracia tras cada golpe.
+// Ajustar a la intencion real.
+#define SIMA_HIT_INVULN_TURNS 1
 
 // Muerte (3 frames, elf-dead-look-right.png).
 #define SIMA_DEATH_ANIM_PERIOD 6
