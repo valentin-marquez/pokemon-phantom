@@ -263,65 +263,48 @@ def generate_hud_hearts():
     print(f"hud_hearts.png  ({out.width}x{out.height})")
 
 
-# Arma del jugador (Tarea 8, sensacion del golpe): CUATRO arcos de tajo (media
-# luna) recortados de weapons.png, en vez de los dos frames de mandoble
-# diagonal de antes (ver git log de esta funcion para esa version). Motivo:
-# el dueño reporto que el golpe "no se ve bien" / "no se donde le pegamos" --
-# una espada dibujada en diagonal (unica orientacion disponible en toda la
-# hoja, ver el comentario largo en src/sima_actors.c) no señala una casilla
-# cardinal sin ambiguedad por mucho flip de OAM que se le aplique. La hoja
-# tiene, en otra zona (armas arrojadizas/efectos, no las dagas/espadas de las
-# filas 0-10), un par de arcos que SI curvan limpiamente en un eje: un par
-# vertical (para golpes arriba/abajo) y un par horizontal (para izq/derecha).
-# A diferencia de esas dagas, estos arcos SI estan centrados en su celda de
-# 16x16 (medido: bounding box real dentro de cada celda, sin pixeles pegados
-# al borde ni cortados), asi que el recorte es alineado a rejilla como
-# TILE_CELLS/PLAYER_WALK_CELLS de mas arriba, no en pixeles sueltos.
+# Arma del jugador (espada, reemplazo del arco de tajo): CINCO frames de 16x32
+# de la ESPADA dibujados a mano por el dueño (weapon_left_0..4.png), en vez de
+# los cuatro arcos de media luna de antes (ver git log de esta funcion para esa
+# version). Motivo del cambio: el arma principal del prota ES una espada, y con
+# la vista de perfil pura (el prota solo mira izq/derecha, ver el comentario
+# largo en src/sima_actors.c) una espada en horizontal ya se lee sin la
+# ambiguedad direccional que en su dia obligo a pasar al arco.
 #
-# Cada par (vertical, horizontal) son dos iconos DISTINTOS de la hoja, no un
-# frame y su flip -- se usan como las dos fases del golpe (A = windup, B =
-# activo/impacto), igual que antes hacian FRAME_A/FRAME_B del mandoble; la
-# pequeña diferencia de silueta entre A y B da algo de vida al golpe en vez
-# de un frame identico repetido. La direccion cardinal la decide un flip de
-# OAM sobre ese PAR (ST_OAM_VFLIP arriba/abajo dentro del par vertical,
-# ST_OAM_HFLIP izquierda/derecha dentro del par horizontal) -- ver
-# UpdateAttack en src/sima_actors.c para la eleccion exacta de flip por
-# direccion y su razonamiento (centroide de pixeles: cada arco tiene mas
-# "masa" hacia un lado, y ese lado se orienta hacia el borde de la casilla
-# mas lejano al jugador, como si el filo terminase de cruzarla).
-WEAPON_ARC_CELLS = [
-    (6, 1),   # FRAME_VERT_A (windup, vertical): arco arriba/abajo, masa abajo
-    (8, 7),   # FRAME_VERT_B (activo, vertical): idem, variante de impacto
-    (7, 5),   # FRAME_HORIZ_A (windup, horizontal): arco izq/derecha, masa a la derecha
-    (7, 9),   # FRAME_HORIZ_B (activo, horizontal): idem, variante de impacto
-]
+# Los frames vienen MIRANDO A LA IZQUIERDA (el juego voltea por OAM para la
+# derecha, hFlip en UpdateAttack -- misma economia de VRAM que player_anim, que
+# solo carga "-right"). Son 16x32 -- el doble de alto que el jugador (16x16) --
+# porque describen un mandoble descendente: la mitad superior del canvas es la
+# espada ALZADA y la inferior el reposo, y el sprite se ancla con su BASE sobre
+# la fila del jugador (top-left = sPlayerY-16, ver UpdateAttack). La secuencia
+# es: 0 = alzada (windup), 1,2,3 = arco de tajo barriendo hacia abajo (impacto),
+# 4 = reposo / follow-through. Todos de 4 colores y sin alfa parcial (medido,
+# como el resto de hojas de SIMA), asi que reindexan limpio en la paleta
+# compartida -- no necesitan paleta propia.
+WEAPON_DIR = "SGQ_Dungeon/weapons_and_projectiles"
+WEAPON_FRAMES = 5          # weapon_left_0..4.png
+WEAPON_FRAME_W = 16
+WEAPON_FRAME_H = 32
 
 
-def generate_weapon():
-    """Recorta las 4 celdas de WEAPON_ARC_CELLS de weapons.png (ya
-    reindexado) y las empaqueta en una tira horizontal de 64x16, igual que
-    generate_player_anim(): graphics_file_rules.mk la convierte con -mwidth 2
-    -mheight 2 para que cada celda de 16x16 quede en 4 tiles de hardware
-    contiguos (formato OBJ). weapons.png ya paso por convert() (arriba), que
-    aborta ante cualquier color fuera de la paleta de 4 tonos de SIMA -- este
-    recorte posterior no puede colar un color nuevo, solo copia indices ya
-    validados. Aun asi se reafirma esa garantia aqui (en vez de confiar en
-    silencio en el paso previo) por si algun dia generate_weapon() se llama
-    con una fuente que no paso por convert()."""
-    src_path = os.path.join(OUT, "weapons.png")
-    src = Image.open(src_path)
-    valid_indices = set(range(1 + len(COLORS)))  # 0=transparente, 1..len(COLORS)
-    out = Image.new("P", (16 * len(WEAPON_ARC_CELLS), 16), 0)
-    out.putpalette(src.getpalette())
-    for i, (cellX, cellY) in enumerate(WEAPON_ARC_CELLS):
-        box = (cellX * 16, cellY * 16, cellX * 16 + 16, cellY * 16 + 16)
-        cell = src.crop(box)
-        px = cell.load()
-        bad = {px[x, y] for y in range(16) for x in range(16)} - valid_indices
-        if bad:
-            sys.exit(f"ERROR: weapons.png celda {(cellX, cellY)} usa el/los "
-                      f"indice(s) {sorted(bad)}, fuera de la paleta de SIMA")
-        out.paste(cell, (i * 16, 0))
+def generate_weapon(root):
+    """Reindexa (reindex(), que aborta ante cualquier color o alfa fuera de la
+    paleta de SIMA, o ante un tamaño que no sea 16x32) los 5 frames de la espada
+    y los apila VERTICALMENTE en weapon.png (16x160, frame 0 arriba -> frame 4
+    abajo). graphics_file_rules.mk lo convierte con -mwidth 2 -mheight 4 para que
+    cada frame de 16x32 quede en 8 tiles de hardware CONTIGUOS (formato OBJ,
+    SPRITE_SIZE(16x32)) -- el orden de tiles OBJ 1D dentro de un frame coincide
+    con el orden de lectura de gbagfx sobre una tira de 16px de ancho."""
+    out = Image.new("P", (WEAPON_FRAME_W, WEAPON_FRAME_H * WEAPON_FRAMES), 0)
+    pal = list(TRANSPARENT)
+    for rgb in COLORS:
+        pal += list(rgb)
+    pal += [0, 0, 0] * (16 - 1 - len(COLORS))
+    out.putpalette(pal)   # misma paleta que reindex() -- pegar es copiar indices
+    for i in range(WEAPON_FRAMES):
+        src_path = os.path.join(root, WEAPON_DIR, f"weapon_left_{i}.png")
+        cell = reindex(src_path, expected_size=(WEAPON_FRAME_W, WEAPON_FRAME_H))
+        out.paste(cell, (0, i * WEAPON_FRAME_H))
     out.save(os.path.join(OUT, "weapon.png"))
     print(f"weapon.png  ({out.width}x{out.height})")
 
@@ -332,14 +315,22 @@ def main():
     missing += [os.path.join(PLAYER_ANIM_DIR, filename)
                 for filename, _, _ in PLAYER_ANIM_SOURCES
                 if not os.path.exists(os.path.join(root, PLAYER_ANIM_DIR, filename))]
+    missing += [os.path.join(WEAPON_DIR, f"weapon_left_{i}.png")
+                for i in range(WEAPON_FRAMES)
+                if not os.path.exists(os.path.join(root, WEAPON_DIR, f"weapon_left_{i}.png"))]
     if missing:
         sys.exit("ERROR: no encontrados en " + root + ":\n  " + "\n  ".join(missing))
     for rel, name in ASSETS.items():
         convert(os.path.join(root, rel), name)
-    generate_tiles()
+    # NO llamar a generate_tiles() aqui: graphics/sima/tiles.png lo DUEÑA
+    # rooms.py desde que se importo la sala del editor visual -- es el atlas de
+    # celdas COMPUESTAS (base+objeto) que indexa sima_rooms_data.h, no las 3
+    # celdas suelo/muro/escalera de generate_tiles(). Llamarlo aqui pisaba ese
+    # atlas y dejaba la sala apuntando a tiles inexistentes (suelo rojo). La
+    # funcion se conserva abajo solo como referencia historica.
     generate_player_anim(root)
     generate_hud_hearts()
-    generate_weapon()
+    generate_weapon(root)
 
 
 if __name__ == "__main__":
